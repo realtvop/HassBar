@@ -59,3 +59,18 @@ struct Favorites: Codable, Equatable, Sendable {
         entityIDs.insert(id, at: insertAt)
     }
 }
+
+extension Favorites: RawRepresentable {
+    /// JSON-encoded representation used for `UserDefaults` persistence.
+    public init?(rawValue: String) {
+        guard let data = rawValue.data(using: .utf8),
+              let value = try? JSONDecoder().decode(Favorites.self, from: data) else {
+            return nil
+        }
+        self = value
+    }
+
+    public var rawValue: String {
+        (try? String(data: JSONEncoder().encode(self), encoding: .utf8)) ?? ""
+    }
+}
