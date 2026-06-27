@@ -9,10 +9,13 @@ import SwiftUI
 
 struct MenuBarView: View {
     let store: HomeAssistantStore
+    @Binding var settingsTab: SettingsTab
     @Environment(\.openSettings) private var openSettings
 
-    /// Wired in a later step to open the entity selection window.
-    var onManageEntities: () -> Void = {}
+    private func manageEntities() {
+        settingsTab = .entities
+        openSettings()
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -93,7 +96,7 @@ struct MenuBarView: View {
             emptyState(
                 message: "No favorite entities selected.",
                 actionTitle: "Manage Entities",
-                action: onManageEntities
+                action: manageEntities
             )
         } else {
             ScrollView {
@@ -126,7 +129,7 @@ struct MenuBarView: View {
 
     private var footer: some View {
         HStack {
-            Button("Manage Entities…", action: onManageEntities)
+            Button("Manage Entities…", action: manageEntities)
             Spacer()
             Button("Quit") { NSApp.terminate(nil) }
                 .keyboardShortcut("q")

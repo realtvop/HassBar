@@ -7,6 +7,7 @@
 
 import Foundation
 import Observation
+import SwiftUI
 
 /// High-level connection state surfaced to the UI.
 enum HAConnectionStatus: Equatable, Sendable {
@@ -137,6 +138,12 @@ final class HomeAssistantStore {
 
     func moveFavorite(_ id: String, to index: Int) {
         favorites.move(id, to: index)
+        config.favorites = favorites
+    }
+
+    /// Reorder favorites from a SwiftUI `onMove` operation.
+    func moveFavorites(from source: IndexSet, to destination: Int) {
+        favorites.entityIDs.move(fromOffsets: source, toOffset: destination)
         config.favorites = favorites
     }
 

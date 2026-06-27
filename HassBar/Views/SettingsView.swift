@@ -7,7 +7,30 @@
 
 import SwiftUI
 
+enum SettingsTab: Hashable {
+    case connection
+    case entities
+}
+
 struct SettingsView: View {
+    let store: HomeAssistantStore
+    @Binding var selectedTab: SettingsTab
+
+    var body: some View {
+        TabView(selection: $selectedTab) {
+            ConnectionSettingsView(store: store)
+                .tabItem { Label("Connection", systemImage: "link") }
+                .tag(SettingsTab.connection)
+
+            EntitySelectionView(store: store)
+                .tabItem { Label("Entities", systemImage: "star") }
+                .tag(SettingsTab.entities)
+        }
+        .frame(minWidth: 520, minHeight: 420)
+    }
+}
+
+private struct ConnectionSettingsView: View {
     let store: HomeAssistantStore
 
     @State private var url: String = ""
@@ -66,7 +89,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(minWidth: 460, minHeight: 280)
         .onAppear { load() }
     }
 
