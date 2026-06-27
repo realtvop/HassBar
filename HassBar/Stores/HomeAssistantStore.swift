@@ -19,8 +19,9 @@ enum HAConnectionStatus: Equatable, Sendable {
 }
 
 /// Observable application state bridging `HomeAssistantClient` and SwiftUI views.
+@MainActor
 @Observable
-final class HomeAssistantStore {
+final class HomeAssistantStore: HAWebsocketDelegate {
     let config: AppConfig
     private let makeClient: (HAConnection) -> HomeAssistantClient
 
@@ -35,6 +36,9 @@ final class HomeAssistantStore {
     private(set) var actionErrors: [String: HAError] = [:]
 
     private(set) var favorites: Favorites
+    private(set) var realtimeStatus: HARealtimeStatus = .disconnected
+
+    private var webSocket: HomeAssistantWebSocket?
 
     init(
         config: AppConfig,
@@ -87,6 +91,7 @@ final class HomeAssistantStore {
             entities = cache
             lastError = nil
             status = .connected
+            startRealtimeIfNeeded()
         } catch let error as HAError {
             lastError = error
             status = .error(error)
@@ -116,9 +121,9 @@ final class HomeAssistantStore {
         actionErrors[entityID] = nil
         do {
             try await client.callService(domain: domain, service: service, entityID: entityID)
-            // State is expected to update via WebSocket events; pending is cleared
-            // once the resulting state_changed event arrives. In the first version
-            // without WebSocket we still clear pending here.
+            // State is expected to update via WebSocket `state_changed` events,
+            // which clear `pendingActions` when the new state arrives. We also
+            // clear pending as a fallback here.
             pendingActions.remove(entityID)
         } catch let error as HAError {
             actionErrors[entityID] = error
@@ -160,6 +165,52 @@ final class HomeAssistantStore {
             if case .unconfigured = status { status = .disconnected }
         } else {
             status = .unconfigured
+        }
+    }
+
+    // MARK: - WebSocket
+
+    private func startRealtimeIfNeeded() {
+        guard config.isConfigured,
+              let url = URL(string: config.haURL),
+              let token = config.token, !token.isEmpty else { return }
+        if let webSocket {
+            Task { await webSocket.stop() }
+        }
+        let ws = HomeAssistantWebSocket(baseURL: url, token: token, delegate: self)
+        webSocket = ws
+        Task { await ws.start() }
+    }
+
+    func stopRealtime() {
+        if let ws = webSocket {
+            Task { await ws.stop() }
+        }
+        webSocket = nil
+        realtimeStatus = .disconnected
+    }
+
+    nonisolated func realtime(didChange status: HARealtimeStatus) {
+        Task { @MainActor in
+            self.realtimeStatus = status
+        }
+    }
+
+    nonisolated func realtime(didReceive event: HAWebsocketEvent) {
+        Task { @MainActor in
+            self.applyRealtimeEvent(event)
+        }
+    }
+
+    @MainActor
+    private func applyRealtimeEvent(_ event: HAWebsocketEvent) {
+        switch event {
+        case .stateChanged(_, let entity):
+            entities[entity.entityID] = entity
+            // Clear any pending action once the new state arrives.
+            pendingActions.remove(entity.entityID)
+        case .unknown:
+            break
         }
     }
 }

@@ -38,6 +38,7 @@ struct MenuBarView: View {
             statusDot
             statusText
             Spacer()
+            realtimeDot
             Button {
                 Task { await store.refresh() }
             } label: {
@@ -54,6 +55,37 @@ struct MenuBarView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    private var realtimeDot: some View {
+        Group {
+            if let help = realtimeHelp {
+                Circle()
+                    .fill(realtimeColor)
+                    .frame(width: 7, height: 7)
+                    .help(help)
+            }
+        }
+    }
+
+    private var realtimeColor: Color {
+        switch store.realtimeStatus {
+        case .connected: return .green
+        case .connecting, .authenticating, .subscribing: return .yellow
+        case .disconnected: return .gray
+        case .failed: return .red
+        }
+    }
+
+    private var realtimeHelp: String? {
+        switch store.realtimeStatus {
+        case .connected: return "Realtime connected"
+        case .connecting: return "Realtime connecting…"
+        case .authenticating: return "Authenticating…"
+        case .subscribing: return "Subscribing to events…"
+        case .disconnected: return "Realtime disconnected"
+        case .failed(let message): return "Realtime: \(message)"
+        }
     }
 
     private var statusDot: some View {
