@@ -102,7 +102,7 @@ struct MenuBarView: View {
             ScrollView {
                 VStack(spacing: 0) {
                     ForEach(store.favoriteRows) { entity in
-                        FavoriteRow(entity: entity)
+                        FavoriteRow(entity: entity, store: store)
                         if entity.id != store.favoriteRows.last?.id {
                             Divider()
                         }
@@ -143,6 +143,7 @@ struct MenuBarView: View {
 
 private struct FavoriteRow: View {
     let entity: HAEntity
+    let store: HomeAssistantStore
 
     var body: some View {
         HStack(spacing: 10) {
@@ -150,20 +151,66 @@ private struct FavoriteRow: View {
                 .frame(width: 22)
                 .foregroundStyle(.tint)
             VStack(alignment: .leading, spacing: 2) {
-                Text(entity.friendlyName)
-                    .lineLimit(1)
-                Text(entity.displayState)
-                    .font(.caption)
-                    .foregroundStyle(entity.isAvailable ? Color.secondary : Color.red)
+                    Text(entity.friendlyName)
+                        .lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text(entity.displayState)
+                            .font(.caption)
+                            .foregroundStyle(entity.isAvailable ? Color.secondary : Color.red)
+                        if let actionError = store.actionErrors[entity.id] {
+                            Text(Self.errorLabel(actionError))
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
+                    }
+                }
+                Spacer()
+                if store.pendingActions.contains(entity.id) {
+                    ProgressView().controlSize(.small)
+                } else if entity.isAvailable {
+                    actionButtons
+                }
             }
-            Spacer()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .opacity(entity.isAvailable ? 1 : 0.6)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .opacity(entity.isAvailable ? 1 : 0.6)
-    }
 
-    private static func systemImage(for domain: String) -> String {
+        @ViewBuilder
+        private var actionButtons: some View {
+            let actions = EntityActionMapping.displayActions(for: entity)
+            if actions.isEmpty {
+                EmptyView()
+            } else {
+                HStack(spacing: 6) {
+                    ForEach(actions) { action in
+                        Button(action.title) {
+                            Task {
+                                await store.callService(
+                                    domain: action.domain,
+                                    service: action.service,
+                                    entityID: entity.id
+                                )
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                }
+            }
+        }
+
+        private static func errorLabel(_ error: HAError) -> String {
+            switch error {
+            case .missingToken: return "No token"
+            case .httpStatus(let code): return "Failed (\(code))"
+            case .transport: return "Unreachable"
+            case .decoding, .invalidResponse: return "Error"
+            default: return "Error"
+            }
+        }
+
+        private static func systemImage(for domain: String) -> String {
         switch HADomain(rawValue: domain) {
         case .sensor: return "gauge"
         case .binarySensor: return "sensor"
