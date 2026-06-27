@@ -10,8 +10,13 @@ import SwiftUI
 @main
 struct HassBarApp: App {
     var body: some Scene {
-        WindowGroup {
-            ContentView()
+        MenuBarExtra("HassBar", systemImage: "house.fill") {
+            MenuBarView()
+        }
+        .menuBarExtraStyle(.menu)
+
+        Settings {
+            SettingsView()
         }
     }
 }
