@@ -18,7 +18,7 @@ struct HassBarApp: App {
         .menuBarExtraStyle(.window)
 
         Settings {
-            SettingsView()
+            SettingsView(store: store)
         }
     }
 }
