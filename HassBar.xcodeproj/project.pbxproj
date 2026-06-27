@@ -8,12 +8,18 @@
 
 /* Begin PBXFileReference section */
 		F46FACA72FF0355200999613 /* HassBar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HassBar.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F4TESTS01000000000000B1 /* HassBarTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HassBarTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		F46FACA92FF0355200999613 /* HassBar */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = HassBar;
+			sourceTree = "<group>";
+		};
+		F4TESTS01000000000000C0 /* HassBarTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = HassBarTests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -28,11 +34,40 @@
 		};
 /* End PBXFrameworksBuildPhase section */
 
+/* Begin PBXFrameworksBuildPhase section */
+		F4TESTS0100000000000030 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXContainerItemProxy section */
+		F4TESTS0100000000000040 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F46FAC9F2FF0355200999613 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F46FACA62FF0355200999613;
+			remoteInfo = HassBar;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		F4TESTS0100000000000050 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F46FACA62FF0355200999613 /* HassBar */;
+			targetProxy = F4TESTS0100000000000040 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin PBXGroup section */
 		F46FAC9E2FF0355200999613 = {
 			isa = PBXGroup;
 			children = (
 				F46FACA92FF0355200999613 /* HassBar */,
+				F4TESTS01000000000000C0 /* HassBarTests */,
 				F46FACA82FF0355200999613 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +76,7 @@
 			isa = PBXGroup;
 			children = (
 				F46FACA72FF0355200999613 /* HassBar.app */,
+				F4TESTS01000000000000B1 /* HassBarTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -70,6 +106,28 @@
 			productReference = F46FACA72FF0355200999613 /* HassBar.app */;
 			productType = "com.apple.product-type.application";
 		};
+		F4TESTS0100000000000060 /* HassBarTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F4TESTS01000000000000A0 /* Build configuration list for PBXNativeTarget "HassBarTests" */;
+			buildPhases = (
+				F4TESTS0100000000000020 /* Sources */,
+				F4TESTS0100000000000030 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				F4TESTS0100000000000050 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				F4TESTS01000000000000C0 /* HassBarTests */,
+			);
+			name = HassBarTests;
+			packageProductDependencies = (
+			);
+			productName = HassBarTests;
+			productReference = F4TESTS01000000000000B1 /* HassBarTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -82,6 +140,10 @@
 				TargetAttributes = {
 					F46FACA62FF0355200999613 = {
 						CreatedOnToolsVersion = 26.3;
+					};
+					F4TESTS0100000000000060 = {
+						CreatedOnToolsVersion = 26.3;
+						TestTargetID = F46FACA62FF0355200999613;
 					};
 				};
 			};
@@ -100,9 +162,27 @@
 			projectRoot = "";
 			targets = (
 				F46FACA62FF0355200999613 /* HassBar */,
+				F4TESTS0100000000000060 /* HassBarTests */,
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		F46FACA32FF0355200999613 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F4TESTS0100000000000020 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
 
 /* Begin PBXResourcesBuildPhase section */
 		F46FACA52FF0355200999613 /* Resources */ = {
@@ -113,16 +193,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
-
-/* Begin PBXSourcesBuildPhase section */
-		F46FACA32FF0355200999613 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
 		F46FACB02FF0355300999613 /* Debug */ = {
@@ -313,6 +383,45 @@
 			};
 			name = Release;
 		};
+		F4TESTS0100000000000091 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				SWIFT_VERSION = 5.0;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = ZW372988NV;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.7;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = github.realtvop.HassBarTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HassBar.app/Contents/MacOS/HassBar";
+				TEST_HOST_BUILD_NAME = HassBar;
+			};
+			name = Debug;
+		};
+		F4TESTS0100000000000092 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				SWIFT_VERSION = 5.0;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = ZW372988NV;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.7;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = github.realtvop.HassBarTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HassBar.app/Contents/MacOS/HassBar";
+				TEST_HOST_BUILD_NAME = HassBar;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -330,6 +439,15 @@
 			buildConfigurations = (
 				F46FACB32FF0355300999613 /* Debug */,
 				F46FACB42FF0355300999613 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F4TESTS01000000000000A0 /* Build configuration list for PBXNativeTarget "HassBarTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F4TESTS0100000000000091 /* Debug */,
+				F4TESTS0100000000000092 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

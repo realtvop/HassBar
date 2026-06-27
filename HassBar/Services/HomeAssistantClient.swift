@@ -47,11 +47,18 @@ enum HARequestBuilder {
     }
 }
 
+/// Home Assistant REST transport protocol, isolated so tests can inject a fake.
+protocol HomeAssistantCalling: Sendable {
+    func testConnection() async throws
+    func fetchStates() async throws -> [HAEntity]
+    func callService(domain: String, service: String, entityID: String) async throws
+}
+
 /// Home Assistant REST client. Owns no SwiftUI/App state.
 ///
 /// Focused methods cover connection testing, state fetching, and service calls.
 /// WebSocket subscribe/unsubscribe is added in a later step.
-struct HomeAssistantClient: Sendable {
+struct HomeAssistantClient: HomeAssistantCalling, Sendable {
     let connection: HAConnection
     let session: URLSession
     private let decoder = JSONDecoder()

@@ -6,12 +6,13 @@
 //
 
 import Foundation
+import SwiftUI
 
 /// Ordered favorite entity configuration.
 ///
 /// Favorites are stored as a stable ordered list of entity ids so the menu
 /// can present them in a deterministic order independent of the entity cache.
-struct Favorites: Codable, Equatable, Sendable {
+struct Favorites: Equatable, Sendable {
     var entityIDs: [String]
 
     init(entityIDs: [String] = []) {
@@ -49,28 +50,26 @@ struct Favorites: Codable, Equatable, Sendable {
         }
     }
 
-    /// Move an already-favorited id to `toIndex`, clamped to valid bounds.
-    mutating func move(_ id: String, to toIndex: Int) {
+    /// Reorders favorites using the same semantics as `Array.move(fromOffsets:toOffset:)`
+    /// and SwiftUI `List.onMove`, so callers can pass through `onMove` offsets.
+    mutating func move(_ id: String, to destination: Int) {
         guard let from = entityIDs.firstIndex(of: id) else { return }
-        let clamped = min(max(toIndex, 0), entityIDs.count - 1)
-        guard from != clamped else { return }
-        entityIDs.remove(at: from)
-        let insertAt = clamped > from ? clamped - 1 : clamped
-        entityIDs.insert(id, at: insertAt)
+        let source = IndexSet(integer: from)
+        entityIDs.move(fromOffsets: source, toOffset: destination)
     }
 }
 
 extension Favorites: RawRepresentable {
-    /// JSON-encoded representation used for `UserDefaults` persistence.
+    /// JSON-encoded `entityIDs` array, used for `UserDefaults` persistence.
     public init?(rawValue: String) {
         guard let data = rawValue.data(using: .utf8),
-              let value = try? JSONDecoder().decode(Favorites.self, from: data) else {
+              let ids = try? JSONDecoder().decode([String].self, from: data) else {
             return nil
         }
-        self = value
+        self.entityIDs = ids
     }
 
     public var rawValue: String {
-        (try? String(data: JSONEncoder().encode(self), encoding: .utf8)) ?? ""
+        (try? String(data: JSONEncoder().encode(entityIDs), encoding: .utf8)) ?? "[]"
     }
 }

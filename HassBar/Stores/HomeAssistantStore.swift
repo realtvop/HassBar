@@ -23,7 +23,7 @@ enum HAConnectionStatus: Equatable, Sendable {
 @Observable
 final class HomeAssistantStore: HAWebsocketDelegate {
     let config: AppConfig
-    private let makeClient: (HAConnection) -> HomeAssistantClient
+    private let makeClient: (HAConnection) -> any HomeAssistantCalling
 
     private(set) var status: HAConnectionStatus = .unconfigured
     private(set) var entities: [String: HAEntity] = [:]
@@ -32,6 +32,15 @@ final class HomeAssistantStore: HAWebsocketDelegate {
 
     /// Entity ids with an in-flight service call.
     private(set) var pendingActions: Set<String> = []
+
+    /// Test hook to register a pending action without issuing a service call.
+    func registerPendingAction(_ id: String) {
+        pendingActions.insert(id)
+    }
+    /// Removes a pending action; used by tests or WS event application.
+    func clearPendingAction(_ id: String) {
+        pendingActions.remove(id)
+    }
     /// Most recent per-entity service call error.
     private(set) var actionErrors: [String: HAError] = [:]
 
@@ -39,12 +48,15 @@ final class HomeAssistantStore: HAWebsocketDelegate {
     private(set) var realtimeStatus: HARealtimeStatus = .disconnected
 
     private var webSocket: HomeAssistantWebSocket?
+    let startRealtimeOnRefresh: Bool
 
     init(
         config: AppConfig,
-        makeClient: @escaping (HAConnection) -> HomeAssistantClient = { HomeAssistantClient(connection: $0) }
+        startRealtimeOnRefresh: Bool = true,
+        makeClient: @escaping (HAConnection) -> any HomeAssistantCalling = { HomeAssistantClient(connection: $0) }
     ) {
         self.config = config
+        self.startRealtimeOnRefresh = startRealtimeOnRefresh
         self.makeClient = makeClient
         self.favorites = config.favorites
         refreshStatus()
@@ -77,7 +89,7 @@ final class HomeAssistantStore: HAWebsocketDelegate {
             status = .unconfigured
             return
         }
-        let client = makeClient(HAConnection(baseURL: url, token: token))
+        let client: any HomeAssistantCalling = makeClient(HAConnection(baseURL: url, token: token))
 
         isLoading = true
         status = .connecting
@@ -115,7 +127,7 @@ final class HomeAssistantStore: HAWebsocketDelegate {
             actionErrors[entityID] = .missingToken
             return
         }
-        let client = makeClient(HAConnection(baseURL: url, token: token))
+        let client: any HomeAssistantCalling = makeClient(HAConnection(baseURL: url, token: token))
 
         pendingActions.insert(entityID)
         actionErrors[entityID] = nil
@@ -171,7 +183,7 @@ final class HomeAssistantStore: HAWebsocketDelegate {
     // MARK: - WebSocket
 
     private func startRealtimeIfNeeded() {
-        guard config.isConfigured,
+        guard startRealtimeOnRefresh, config.isConfigured,
               let url = URL(string: config.haURL),
               let token = config.token, !token.isEmpty else { return }
         if let webSocket {
