@@ -9,11 +9,13 @@ import SwiftUI
 
 @main
 struct HassBarApp: App {
+    @State private var store = HomeAssistantStore(config: AppConfig())
+
     var body: some Scene {
         MenuBarExtra("HassBar", systemImage: "house.fill") {
-            MenuBarView()
+            MenuBarView(store: store)
         }
-        .menuBarExtraStyle(.menu)
+        .menuBarExtraStyle(.window)
 
         Settings {
             SettingsView()
