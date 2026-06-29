@@ -409,8 +409,8 @@ private struct FavoriteRow: View {
                 range: 0...100,
                 step: 1,
                 trackStyle: .valueFill(brightnessColor),
-                onCommit: {
-                    await store.setBrightness(entityID: entity.id, percent: Int(brightnessValue.rounded()))
+                onCommit: { value in
+                    await store.setBrightness(entityID: entity.id, percent: Int(value.rounded()))
                 }
             )
             Text("\(Int(brightnessValue.rounded()))%")
@@ -431,8 +431,8 @@ private struct FavoriteRow: View {
                 range: Double(range.lowerBound)...Double(range.upperBound),
                 step: 100,
                 trackStyle: .fullGradient(colorTemperatureColors(for: range)),
-                onCommit: {
-                    await store.setColorTemperature(entityID: entity.id, kelvin: Int(colorTempValue))
+                onCommit: { value in
+                    await store.setColorTemperature(entityID: entity.id, kelvin: Int(value.rounded()))
                 }
             )
             Text("\(Int(colorTempValue))K")
@@ -505,15 +505,17 @@ private enum GradientSliderTrackStyle {
 
 private struct GradientSlider: View {
     @Binding var value: Double
+    @State private var scrollCommitTask: Task<Void, Never>?
 
     let range: ClosedRange<Double>
     let step: Double
     let trackStyle: GradientSliderTrackStyle
-    let onCommit: () async -> Void
+    let onCommit: (Double) async -> Void
 
     private let thumbSize: CGFloat = 13
     private let trackHeight: CGFloat = 6
     private let scrollSensitivity = 0.35
+    private let scrollCommitDelay: Duration = .milliseconds(180)
 
     var body: some View {
         GeometryReader { proxy in
@@ -541,14 +543,19 @@ private struct GradientSlider: View {
                     updateValue(from: locationX, trackWidth: trackWidth)
                 } onScroll: { delta in
                     updateValue(byScrollDelta: delta)
+                    scheduleScrollCommit()
                 } onCommit: {
-                    Task { await onCommit() }
+                    scrollCommitTask?.cancel()
+                    commitCurrentValue()
                 }
             }
         }
         .frame(height: 18)
         .accessibilityElement()
         .accessibilityValue("\(Int(value))")
+        .onDisappear {
+            scrollCommitTask?.cancel()
+        }
     }
 
     private var normalizedValue: CGFloat {
@@ -606,6 +613,23 @@ private struct GradientSlider: View {
         let rawValue = value + Double(delta) * scrollStep * scrollSensitivity
         let steppedValue = range.lowerBound + ((rawValue - range.lowerBound) / step).rounded() * step
         value = min(max(steppedValue, range.lowerBound), range.upperBound)
+    }
+
+    private func scheduleScrollCommit() {
+        scrollCommitTask?.cancel()
+        let committedValue = value
+        scrollCommitTask = Task {
+            try? await Task.sleep(for: scrollCommitDelay)
+            guard !Task.isCancelled else { return }
+            await onCommit(committedValue)
+        }
+    }
+
+    private func commitCurrentValue() {
+        let committedValue = value
+        Task {
+            await onCommit(committedValue)
+        }
     }
 }
 
