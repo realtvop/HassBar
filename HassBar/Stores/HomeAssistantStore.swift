@@ -131,11 +131,14 @@ final class HomeAssistantStore: HAWebsocketDelegate {
 
         pendingActions.insert(entityID)
         actionErrors[entityID] = nil
+        let previousState = entities[entityID]?.state
         do {
             try await client.callService(domain: domain, service: service, entityID: entityID)
-            // State is expected to update via WebSocket `state_changed` events,
-            // which clear `pendingActions` when the new state arrives. We also
-            // clear pending as a fallback here.
+            // HA may not apply the service call synchronously, so poll the
+            // entity state for a short window until it changes (or give up
+            // and let WebSocket `state_changed` events handle it). This keeps
+            // `pendingActions` set while polling so the spinner stays visible.
+            await pollForStateChange(client: client, entityID: entityID, previousState: previousState)
             pendingActions.remove(entityID)
         } catch let error as HAError {
             actionErrors[entityID] = error
@@ -147,6 +150,36 @@ final class HomeAssistantStore: HAWebsocketDelegate {
     }
 
     // MARK: - Favorites
+
+    /// Polls the entity state for a short window after a service call,
+    /// waiting for HA to apply the change. Updates `entities` and returns
+    /// as soon as the state differs from `previousState`. Best-effort:
+    /// errors are swallowed and WebSocket events may still apply updates.
+    private func pollForStateChange(
+        client: any HomeAssistantCalling,
+        entityID: String,
+        previousState: String?,
+        attempts: Int = 6,
+        initialDelay: Duration = .milliseconds(300),
+        maxDelay: Duration = .milliseconds(1500)
+    ) async {
+        var delay = initialDelay
+        for _ in 0..<attempts {
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            do {
+                let updated = try await client.fetchEntity(entityID: entityID)
+                if previousState == nil || updated.state != previousState {
+                    entities[entityID] = updated
+                    return
+                }
+                entities[entityID] = updated
+            } catch {
+                return
+            }
+            delay = min(delay * 2, maxDelay)
+        }
+    }
 
     func toggleFavorite(_ id: String) {
         favorites.toggle(id)

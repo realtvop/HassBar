@@ -6,8 +6,10 @@ final class FakeHAClient: HomeAssistantCalling {
     var fetchResult: Result<[HAEntity], Error>
     var callResult: Result<Void, Error> = .success(())
     var testResult: Result<Void, Error> = .success(())
+    var fetchEntityResult: Result<HAEntity, Error>?
     private(set) var callInvocations: [(domain: String, service: String, entityID: String)] = []
     private(set) var fetchCount = 0
+    private(set) var fetchEntityInvocations: [String] = []
 
     init(fetchResult: Result<[HAEntity], Error> = .success([])) {
         self.fetchResult = fetchResult
@@ -20,6 +22,14 @@ final class FakeHAClient: HomeAssistantCalling {
     func fetchStates() async throws -> [HAEntity] {
         fetchCount += 1
         return try fetchResult.get()
+    }
+
+    func fetchEntity(entityID: String) async throws -> HAEntity {
+        fetchEntityInvocations.append(entityID)
+        if let result = fetchEntityResult {
+            return try result.get()
+        }
+        return try fetchResult.get().first(where: { $0.entityID == entityID })!
     }
 
     func callService(domain: String, service: String, entityID: String) async throws {
@@ -80,6 +90,7 @@ final class HomeAssistantStoreTests: XCTestCase {
 
     func testCallServiceRecordsAndClearsPending() async {
         let (store, fake) = configuredStore(fetch: .success([entity("light.a","off")]))
+        fake.fetchEntityResult = .success(entity("light.a","on"))
         await store.refresh()
         await store.callService(domain: "light", service: "turn_on", entityID: "light.a")
         XCTAssertEqual(
@@ -87,6 +98,7 @@ final class HomeAssistantStoreTests: XCTestCase {
             ["light|turn_on|light.a"]
         )
         XCTAssertTrue(store.pendingActions.isEmpty)
+        XCTAssertEqual(store.entities["light.a"]?.state, "on")
     }
 
     func testCallServiceFailureSetsRowError() async {

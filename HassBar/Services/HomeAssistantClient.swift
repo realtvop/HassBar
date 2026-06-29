@@ -51,6 +51,7 @@ enum HARequestBuilder {
 protocol HomeAssistantCalling: Sendable {
     func testConnection() async throws
     func fetchStates() async throws -> [HAEntity]
+    func fetchEntity(entityID: String) async throws -> HAEntity
     func callService(domain: String, service: String, entityID: String) async throws
 }
 
@@ -95,6 +96,26 @@ struct HomeAssistantClient: HomeAssistantCalling, Sendable {
         }
         do {
             return try decoder.decode([HAEntity].self, from: data)
+        } catch {
+            throw HAError.decoding
+        }
+    }
+
+    /// Fetches a single entity state via `GET /api/states/{entity_id}`.
+    /// Used to refresh one entity's state immediately after a service call,
+    /// without waiting for a WebSocket `state_changed` event.
+    func fetchEntity(entityID: String) async throws -> HAEntity {
+        let request = try HARequestBuilder.makeRequest(
+            baseURL: connection.baseURL,
+            token: connection.token,
+            path: "api/states/\(entityID)"
+        )
+        let (data, http) = try await perform(request)
+        guard (200..<300).contains(http.statusCode) else {
+            throw HAError.httpStatus(http.statusCode)
+        }
+        do {
+            return try decoder.decode(HAEntity.self, from: data)
         } catch {
             throw HAError.decoding
         }
