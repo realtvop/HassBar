@@ -325,11 +325,7 @@ private struct FavoriteRow: View {
                 value: $brightnessValue,
                 range: 0...100,
                 step: 1,
-                colors: [
-                    Color(nsColor: .controlBackgroundColor),
-                    .yellow.opacity(0.55),
-                    .white
-                ],
+                trackStyle: .valueFill(brightnessColor),
                 onCommit: {
                     await store.setBrightness(entityID: entity.id, percent: Int(brightnessValue))
                 }
@@ -351,7 +347,7 @@ private struct FavoriteRow: View {
                 value: $colorTempValue,
                 range: Double(range.lowerBound)...Double(range.upperBound),
                 step: 100,
-                colors: colorTemperatureColors(for: range),
+                trackStyle: .fullGradient(colorTemperatureColors(for: range)),
                 onCommit: {
                     await store.setColorTemperature(entityID: entity.id, kelvin: Int(colorTempValue))
                 }
@@ -361,6 +357,17 @@ private struct FavoriteRow: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 40, alignment: .trailing)
         }
+    }
+
+    private var brightnessColor: Color {
+        let kelvin = Int(colorTempValue.rounded())
+        let components = ColorTemperatureRGB.components(forKelvin: kelvin)
+        return Color(red: components.red, green: components.green, blue: components.blue)
+            .opacity(brightnessOpacity)
+    }
+
+    private var brightnessOpacity: Double {
+        min(max(brightnessValue / 100.0, 0), 1)
     }
 
     private func colorTemperatureColors(for range: ClosedRange<Int>) -> [Color] {
@@ -408,12 +415,17 @@ private struct FavoriteRow: View {
 
 }
 
+private enum GradientSliderTrackStyle {
+    case fullGradient([Color])
+    case valueFill(Color)
+}
+
 private struct GradientSlider: View {
     @Binding var value: Double
 
     let range: ClosedRange<Double>
     let step: Double
-    let colors: [Color]
+    let trackStyle: GradientSliderTrackStyle
     let onCommit: () async -> Void
 
     private let thumbSize: CGFloat = 13
@@ -426,16 +438,7 @@ private struct GradientSlider: View {
             let progress = normalizedValue
 
             ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: colors,
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .frame(height: trackHeight)
-                    .frame(maxWidth: .infinity)
+                track(progress: progress, trackWidth: trackWidth)
 
                 Circle()
                     .fill(.background)
@@ -464,6 +467,29 @@ private struct GradientSlider: View {
         guard range.upperBound > range.lowerBound else { return 0 }
         let clamped = min(max(value, range.lowerBound), range.upperBound)
         return CGFloat((clamped - range.lowerBound) / (range.upperBound - range.lowerBound))
+    }
+
+    @ViewBuilder
+    private func track(progress: CGFloat, trackWidth: CGFloat) -> some View {
+        ZStack(alignment: .leading) {
+            switch trackStyle {
+            case .fullGradient(let colors):
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: colors,
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(height: trackHeight)
+                    .frame(maxWidth: .infinity)
+            case .valueFill(let color):
+                Capsule()
+                    .fill(color)
+                    .frame(width: thumbSize / 2 + trackWidth * progress, height: trackHeight)
+            }
+        }
     }
 
     private func updateValue(from locationX: CGFloat, trackWidth: CGFloat) {
