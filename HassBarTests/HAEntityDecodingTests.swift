@@ -78,6 +78,25 @@ final class HAEntityDecodingTests: XCTestCase {
         XCTAssertEqual(entity.colorTempRange, 2000...6500)
     }
 
+    func testDecodesMiredColorTemperatureRange() throws {
+        let json = """
+        {
+            "entity_id": "light.legacy_bulb",
+            "state": "on",
+            "attributes": {
+                "color_temp": 370,
+                "min_mireds": 153,
+                "max_mireds": 500,
+                "supported_color_modes": ["color_temp"]
+            }
+        }
+        """.data(using: .utf8)!
+        let entity = try JSONDecoder().decode(HAEntity.self, from: json)
+        XCTAssertTrue(entity.supportsColorTemperature)
+        XCTAssertEqual(entity.colorTempKelvin, 2703)
+        XCTAssertEqual(entity.colorTempRange, 2000...6536)
+    }
+
     func testLightWithoutColorTempModeDoesNotSupportTemperature() throws {
         let json = """
         {

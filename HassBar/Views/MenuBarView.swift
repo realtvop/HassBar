@@ -212,6 +212,11 @@ private struct FavoriteRow: View {
         .onChange(of: entity.id) { syncSliderValues() }
         .onChange(of: entity.attributes.brightness) { syncBrightness() }
         .onChange(of: entity.attributes.colorTempKelvin) { syncColorTemperature() }
+        .onChange(of: entity.attributes.colorTempMireds) { syncColorTemperature() }
+        .onChange(of: entity.attributes.minColorTempKelvin) { syncColorTemperature() }
+        .onChange(of: entity.attributes.maxColorTempKelvin) { syncColorTemperature() }
+        .onChange(of: entity.attributes.minMireds) { syncColorTemperature() }
+        .onChange(of: entity.attributes.maxMireds) { syncColorTemperature() }
     }
 
     private var mainRow: some View {
@@ -316,16 +321,17 @@ private struct FavoriteRow: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(width: 16)
-            Slider(
+            GradientSlider(
                 value: $brightnessValue,
-                in: 0...100,
+                range: 0...100,
                 step: 1,
-                onEditingChanged: { isEditing in
-                    if !isEditing {
-                        Task {
-                            await store.setBrightness(entityID: entity.id, percent: Int(brightnessValue))
-                        }
-                    }
+                colors: [
+                    Color(nsColor: .controlBackgroundColor),
+                    .yellow.opacity(0.55),
+                    .white
+                ],
+                onCommit: {
+                    await store.setBrightness(entityID: entity.id, percent: Int(brightnessValue))
                 }
             )
             Text("\(Int(brightnessValue))%")
@@ -341,16 +347,13 @@ private struct FavoriteRow: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(width: 16)
-            Slider(
+            GradientSlider(
                 value: $colorTempValue,
-                in: Double(range.lowerBound)...Double(range.upperBound),
+                range: Double(range.lowerBound)...Double(range.upperBound),
                 step: 100,
-                onEditingChanged: { isEditing in
-                    if !isEditing {
-                        Task {
-                            await store.setColorTemperature(entityID: entity.id, kelvin: Int(colorTempValue))
-                        }
-                    }
+                colors: [.orange, .yellow.opacity(0.65), .cyan.opacity(0.75), .blue],
+                onCommit: {
+                    await store.setColorTemperature(entityID: entity.id, kelvin: Int(colorTempValue))
                 }
             )
             Text("\(Int(colorTempValue))K")
@@ -370,13 +373,18 @@ private struct FavoriteRow: View {
     }
 
     private func syncColorTemperature() {
-        if let kelvin = entity.attributes.colorTempKelvin {
-            colorTempValue = Double(kelvin)
+        if let kelvin = entity.colorTempKelvin {
+            colorTempValue = Double(clampedColorTemperature(kelvin))
         } else if let range = entity.colorTempRange {
             colorTempValue = Double((range.lowerBound + range.upperBound) / 2)
         } else {
             colorTempValue = 4000
         }
+    }
+
+    private func clampedColorTemperature(_ kelvin: Int) -> Int {
+        guard let range = entity.colorTempRange else { return kelvin }
+        return min(max(kelvin, range.lowerBound), range.upperBound)
     }
 
     private static func errorLabel(_ error: HAError) -> String {
@@ -388,4 +396,79 @@ private struct FavoriteRow: View {
         }
     }
 
+}
+
+private struct GradientSlider: View {
+    @Binding var value: Double
+
+    let range: ClosedRange<Double>
+    let step: Double
+    let colors: [Color]
+    let onCommit: () async -> Void
+
+    private let thumbSize: CGFloat = 13
+    private let trackHeight: CGFloat = 6
+
+    var body: some View {
+        GeometryReader { proxy in
+            let width = max(proxy.size.width, thumbSize)
+            let trackWidth = max(width - thumbSize, 1)
+            let progress = normalizedValue
+
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: colors,
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(height: trackHeight)
+                    .frame(maxWidth: .infinity)
+
+                Circle()
+                    .fill(.background)
+                    .frame(width: thumbSize, height: thumbSize)
+                    .shadow(color: .black.opacity(0.25), radius: 1, x: 0, y: 0.5)
+                    .overlay {
+                        Circle()
+                            .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+                    }
+                    .offset(x: trackWidth * progress)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { updateValue(from: $0.location.x, trackWidth: trackWidth) }
+                    .onEnded { _ in Task { await onCommit() } }
+            )
+        }
+        .frame(height: 18)
+        .accessibilityElement()
+        .accessibilityValue("\(Int(value))")
+    }
+
+    private var normalizedValue: CGFloat {
+        guard range.upperBound > range.lowerBound else { return 0 }
+        let clamped = min(max(value, range.lowerBound), range.upperBound)
+        return CGFloat((clamped - range.lowerBound) / (range.upperBound - range.lowerBound))
+    }
+
+    private func updateValue(from locationX: CGFloat, trackWidth: CGFloat) {
+        let clampedX = min(max(locationX - thumbSize / 2, 0), trackWidth)
+        if clampedX <= 0 {
+            value = range.lowerBound
+            return
+        }
+        if clampedX >= trackWidth {
+            value = range.upperBound
+            return
+        }
+
+        let rawValue = range.lowerBound + Double(clampedX / trackWidth) * (range.upperBound - range.lowerBound)
+        let steppedValue = range.lowerBound + ((rawValue - range.lowerBound) / step).rounded() * step
+        value = min(max(steppedValue, range.lowerBound), range.upperBound)
+    }
 }

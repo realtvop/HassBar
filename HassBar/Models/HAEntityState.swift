@@ -15,8 +15,11 @@ struct HAAttributes: Decodable, Equatable, Sendable {
     var unitOfMeasurement: String?
     var brightness: Int?
     var colorTempKelvin: Int?
+    var colorTempMireds: Int?
     var minColorTempKelvin: Int?
     var maxColorTempKelvin: Int?
+    var minMireds: Int?
+    var maxMireds: Int?
     var supportedColorModes: [String]?
 
     enum CodingKeys: String, CodingKey {
@@ -24,8 +27,11 @@ struct HAAttributes: Decodable, Equatable, Sendable {
         case unitOfMeasurement = "unit_of_measurement"
         case brightness
         case colorTempKelvin = "color_temp_kelvin"
+        case colorTempMireds = "color_temp"
         case minColorTempKelvin = "min_color_temp_kelvin"
         case maxColorTempKelvin = "max_color_temp_kelvin"
+        case minMireds = "min_mireds"
+        case maxMireds = "max_mireds"
         case supportedColorModes = "supported_color_modes"
     }
 }
@@ -102,13 +108,36 @@ struct HAEntity: Decodable, Equatable, Identifiable, Sendable {
         if let modes = attributes.supportedColorModes {
             return modes.contains("color_temp")
         }
-        return attributes.minColorTempKelvin != nil && attributes.maxColorTempKelvin != nil
+        return colorTempRange != nil
     }
 
     /// Effective color temperature range in Kelvin.
     var colorTempRange: ClosedRange<Int>? {
-        guard let min = attributes.minColorTempKelvin, let max = attributes.maxColorTempKelvin else { return nil }
-        return min...max
+        if let min = attributes.minColorTempKelvin, let max = attributes.maxColorTempKelvin {
+            return min...max
+        }
+        guard
+            let minMireds = attributes.minMireds,
+            let maxMireds = attributes.maxMireds,
+            let warmKelvin = Self.kelvin(fromMireds: maxMireds),
+            let coolKelvin = Self.kelvin(fromMireds: minMireds)
+        else {
+            return nil
+        }
+        return min(warmKelvin, coolKelvin)...max(warmKelvin, coolKelvin)
+    }
+
+    var colorTempKelvin: Int? {
+        if let kelvin = attributes.colorTempKelvin {
+            return kelvin
+        }
+        guard let mireds = attributes.colorTempMireds else { return nil }
+        return Self.kelvin(fromMireds: mireds)
+    }
+
+    private static func kelvin(fromMireds mireds: Int) -> Int? {
+        guard mireds > 0 else { return nil }
+        return Int((1_000_000.0 / Double(mireds)).rounded())
     }
 }
 
