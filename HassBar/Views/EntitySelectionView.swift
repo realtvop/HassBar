@@ -14,6 +14,32 @@ struct EntitySelectionView: View {
     @State private var selectedDomain: HADomain? = nil
 
     var body: some View {
+        Group {
+            if !store.config.isConfigured {
+                unconfiguredState
+            } else {
+                entityList
+            }
+        }
+        .frame(minWidth: 560, minHeight: 400)
+        .task {
+            await store.refreshIfConfigured()
+        }
+    }
+
+    // MARK: - Unconfigured state
+
+    private var unconfiguredState: some View {
+        ContentUnavailableView {
+            Label("Not Configured", systemImage: "network.slash")
+        } description: {
+            Text("Set up your Home Assistant connection to choose favorite entities.")
+        }
+    }
+
+    // MARK: - Entity list
+
+    private var entityList: some View {
         List {
             if !store.favoriteRows.isEmpty {
                 Section("Favorites") {
@@ -44,20 +70,19 @@ struct EntitySelectionView: View {
                 }
             }
         }
-        .searchable(text: $searchText, prompt: "Search by name or id")
+        .listStyle(.inset)
+        .searchable(text: $searchText, prompt: "Search by name or ID")
         .toolbar {
-            ToolbarItem(placement: .automatic) {
+            ToolbarItem(placement: .principal) {
                 Picker("Domain", selection: $selectedDomain) {
                     Text("All Domains").tag(HADomain?.none)
                     ForEach(HADomain.allCases, id: \.self) { domain in
                         Text(domain.rawValue).tag(HADomain?.some(domain))
                     }
                 }
-                .frame(width: 160)
+                .pickerStyle(.menu)
+                .frame(width: 180)
             }
-        }
-        .task {
-            await store.refreshIfConfigured()
         }
     }
 
@@ -78,22 +103,26 @@ struct EntitySelectionView: View {
     }
 }
 
+// MARK: - Entity row
+
 private struct EntityRow: View {
     let entity: HAEntity
     let isFavorite: Bool
     let toggle: () -> Void
 
     var body: some View {
-        HStack {
+        HStack(spacing: 8) {
             Button(action: toggle) {
                 Image(systemName: isFavorite ? "star.fill" : "star")
                     .foregroundStyle(isFavorite ? .yellow : .secondary)
+                    .frame(width: 20)
             }
             .buttonStyle(.borderless)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(entity.friendlyName)
                     .lineLimit(1)
+
                 HStack(spacing: 6) {
                     Text(entity.entityID)
                         .font(.caption)
@@ -106,7 +135,9 @@ private struct EntityRow: View {
                         .foregroundStyle(entity.isAvailable ? Color.secondary : Color.red)
                 }
             }
+
             Spacer()
         }
+        .padding(.vertical, 1)
     }
 }
