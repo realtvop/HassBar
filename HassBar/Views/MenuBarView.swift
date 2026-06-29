@@ -19,6 +19,14 @@ struct MenuBarView: View {
         openSettings()
     }
 
+    private var sensorRows: [HAEntity] {
+        store.favoriteRows.filter { Self.isSensor($0) }
+    }
+
+    private var controlRows: [HAEntity] {
+        store.favoriteRows.filter { !Self.isSensor($0) }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -118,6 +126,10 @@ struct MenuBarView: View {
         }
     }
 
+    private static func isSensor(_ entity: HAEntity) -> Bool {
+        entity.domain == HADomain.sensor.rawValue || entity.domain == HADomain.binarySensor.rawValue
+    }
+
     private static func errorLabel(_ error: HAError) -> String {
         switch error {
         case .missingToken: return "Missing token"
@@ -146,21 +158,36 @@ struct MenuBarView: View {
             )
         } else {
             ScrollView {
-                VStack(spacing: 2) {
-                    ForEach(store.favoriteRows) { entity in
-                        FavoriteRow(
-                            entity: entity,
-                            store: store,
-                            isExpanded: expandedEntityID == entity.id,
-                            expand: {
-                                withAnimation(.easeInOut(duration: 0.15)) {
-                                    expandedEntityID = (expandedEntityID == entity.id ? nil : entity.id)
-                                }
+                VStack(spacing: 8) {
+                    if !sensorRows.isEmpty {
+                        SensorStatusSection(entities: sensorRows)
+                    }
+
+                    if !controlRows.isEmpty {
+                        VStack(spacing: 2) {
+                            ForEach(controlRows) { entity in
+                                FavoriteRow(
+                                    entity: entity,
+                                    store: store,
+                                    isExpanded: expandedEntityID == entity.id,
+                                    expand: {
+                                        withAnimation(.easeInOut(duration: 0.15)) {
+                                            expandedEntityID = (expandedEntityID == entity.id ? nil : entity.id)
+                                        }
+                                    }
+                                )
                             }
-                        )
+                        }
                     }
                 }
                 .padding(.vertical, 8)
+                .onChange(of: controlRows.map(\.id)) { _, ids in
+                    if let expandedEntityID, !ids.contains(expandedEntityID) {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            self.expandedEntityID = nil
+                        }
+                    }
+                }
             }
             .frame(maxHeight: 360)
         }
@@ -192,6 +219,52 @@ struct MenuBarView: View {
         .overlay(alignment: .top) {
             Divider()
         }
+    }
+}
+
+// MARK: - Sensor status section
+
+private struct SensorStatusSection: View {
+    let entities: [HAEntity]
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 6),
+        GridItem(.flexible(), spacing: 6)
+    ]
+
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: 6) {
+            ForEach(entities) { entity in
+                SensorStatusTile(entity: entity)
+            }
+        }
+        .padding(.horizontal, 12)
+    }
+}
+
+private struct SensorStatusTile: View {
+    let entity: HAEntity
+
+    var body: some View {
+        HStack(spacing: 8) {
+            EntityIconBadge(entity: entity, size: 26)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(entity.friendlyName)
+                    .font(.caption)
+                    .lineLimit(1)
+                Text(EntityMenuStyle.statusText(for: entity))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(entity.isAvailable ? Color.primary : Color.red)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 44)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .opacity(entity.isAvailable ? 1 : 0.6)
     }
 }
 
