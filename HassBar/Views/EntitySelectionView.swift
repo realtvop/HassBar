@@ -135,6 +135,8 @@ private struct EntityRow: View {
     let isFavorite: Bool
     let toggle: () -> Void
 
+    @State private var isHovering = false
+
     var body: some View {
         HStack(spacing: 12) {
             favoriteMark
@@ -162,7 +164,14 @@ private struct EntityRow: View {
             Spacer()
         }
         .padding(.vertical, 6)
+        .background {
+            if isHovering {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(EntityMenuStyle.hoverBackground)
+            }
+        }
         .contentShape(Rectangle())
+        .onHover { isHovering = $0 }
         .onTapGesture(perform: toggle)
     }
 

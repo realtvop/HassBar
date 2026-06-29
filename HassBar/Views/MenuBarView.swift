@@ -195,6 +195,7 @@ private struct FavoriteRow: View {
 
     @State private var brightnessValue: Double = 0
     @State private var colorTempValue: Double = 0
+    @State private var isHovering = false
 
     private var canExpand: Bool {
         entity.isLight && entity.state == "on" && (entity.supportsBrightness || entity.supportsColorTemperature)
@@ -248,6 +249,13 @@ private struct FavoriteRow: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
+        .background {
+            if isHovering {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(EntityMenuStyle.hoverBackground)
+            }
+        }
+        .onHover { isHovering = $0 }
         .opacity(entity.isAvailable ? 1 : 0.6)
     }
 

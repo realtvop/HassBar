@@ -8,6 +8,8 @@
 import SwiftUI
 
 enum EntityMenuStyle {
+    static let hoverBackground = Color(nsColor: .separatorColor).opacity(0.22)
+
     static func systemImage(for domain: String) -> String {
         switch HADomain(rawValue: domain) {
         case .sensor: return "gauge.with.dots.needle.bottom.50percent"
