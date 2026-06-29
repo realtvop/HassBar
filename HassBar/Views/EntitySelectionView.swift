@@ -106,7 +106,9 @@ struct EntitySelectionView: View {
                 }
             }
         }
-        .listStyle(.inset)
+        .listStyle(.inset(alternatesRowBackgrounds: false))
+        .scrollContentBackground(.hidden)
+        .background(.regularMaterial)
     }
 
     private var filteredEntities: [HAEntity] {
@@ -134,16 +136,14 @@ private struct EntityRow: View {
     let toggle: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            Button(action: toggle) {
-                Image(systemName: isFavorite ? "star.fill" : "star")
-                    .foregroundStyle(isFavorite ? .yellow : .secondary)
-                    .frame(width: 20)
-            }
-            .buttonStyle(.borderless)
+        HStack(spacing: 12) {
+            favoriteMark
+
+            EntityIconBadge(entity: entity, size: 38)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(entity.friendlyName)
+                    .font(.system(size: 14, weight: .medium))
                     .lineLimit(1)
 
                 HStack(spacing: 6) {
@@ -161,6 +161,22 @@ private struct EntityRow: View {
 
             Spacer()
         }
-        .padding(.vertical, 1)
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: toggle)
+    }
+
+    @ViewBuilder
+    private var favoriteMark: some View {
+        if isFavorite {
+            Image(systemName: "checkmark")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 18)
+                .help("Favorite")
+        } else {
+            Color.clear
+                .frame(width: 18)
+        }
     }
 }

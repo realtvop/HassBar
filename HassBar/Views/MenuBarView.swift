@@ -22,12 +22,11 @@ struct MenuBarView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
             content
-            Divider()
             footer
         }
         .frame(width: 340)
+        .background(.regularMaterial)
         .task {
             await store.refreshIfConfigured()
         }
@@ -57,6 +56,9 @@ struct MenuBarView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
     }
 
     private var realtimeDot: some View {
@@ -134,7 +136,7 @@ struct MenuBarView: View {
             )
         } else {
             ScrollView {
-                VStack(spacing: 0) {
+                VStack(spacing: 2) {
                     ForEach(store.favoriteRows) { entity in
                         FavoriteRow(
                             entity: entity,
@@ -146,11 +148,9 @@ struct MenuBarView: View {
                                 }
                             }
                         )
-                        if entity.id != store.favoriteRows.last?.id {
-                            Divider()
-                        }
                     }
                 }
+                .padding(.vertical, 8)
             }
             .frame(maxHeight: 360)
         }
@@ -179,6 +179,9 @@ struct MenuBarView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        .overlay(alignment: .top) {
+            Divider()
+        }
     }
 }
 
@@ -212,31 +215,35 @@ private struct FavoriteRow: View {
 
     private var mainRow: some View {
         HStack(spacing: 10) {
-            Image(systemName: Self.systemImage(for: entity.domain))
-                .frame(width: 22)
-                .foregroundStyle(.tint)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(entity.friendlyName)
-                    .lineLimit(1)
-                HStack(spacing: 6) {
-                    Text(entity.displayState)
-                        .font(.caption)
-                        .foregroundStyle(entity.isAvailable ? Color.secondary : Color.red)
-                    if let actionError = store.actionErrors[entity.id] {
-                        Text(Self.errorLabel(actionError))
+            leadingControl
+
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(entity.friendlyName)
+                        .lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text(EntityMenuStyle.statusText(for: entity))
                             .font(.caption)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(entity.isAvailable ? Color.secondary : Color.red)
+                        if let actionError = store.actionErrors[entity.id] {
+                            Text(Self.errorLabel(actionError))
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
                     }
                 }
+
+                Spacer()
+
+                if canExpand {
+                    disclosureIndicator
+                }
             }
-            Spacer()
-            if canExpand {
-                disclosureButton
-            }
-            if store.pendingActions.contains(entity.id) {
-                ProgressView().controlSize(.small)
-            } else if entity.isAvailable {
-                actionButtons
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if canExpand {
+                    expand()
+                }
             }
         }
         .padding(.horizontal, 12)
@@ -244,39 +251,40 @@ private struct FavoriteRow: View {
         .opacity(entity.isAvailable ? 1 : 0.6)
     }
 
-    private var disclosureButton: some View {
-        Button(action: expand) {
-            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(width: 18)
+    @ViewBuilder
+    private var leadingControl: some View {
+        if store.pendingActions.contains(entity.id) {
+            ProgressView()
+                .controlSize(.small)
+                .frame(width: 28, height: 28)
+        } else if let action = primaryAction, entity.isAvailable {
+            Button {
+                Task {
+                    await store.callService(
+                        domain: action.domain,
+                        service: action.service,
+                        entityID: entity.id
+                    )
+                }
+            } label: {
+                EntityIconBadge(entity: entity, size: 28)
+            }
+            .buttonStyle(.plain)
+            .help(action.title)
+        } else {
+            EntityIconBadge(entity: entity, size: 28)
         }
-        .buttonStyle(.plain)
-        .help(isExpanded ? "Collapse" : "Expand")
     }
 
-    @ViewBuilder
-    private var actionButtons: some View {
-        let actions = EntityActionMapping.displayActions(for: entity)
-        if actions.isEmpty {
-            EmptyView()
-        } else {
-            HStack(spacing: 6) {
-                ForEach(actions) { action in
-                    Button(action.title) {
-                        Task {
-                            await store.callService(
-                                domain: action.domain,
-                                service: action.service,
-                                entityID: entity.id
-                            )
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-            }
-        }
+    private var disclosureIndicator: some View {
+        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(width: 18)
+    }
+
+    private var primaryAction: EntityAction? {
+        EntityActionMapping.displayActions(for: entity).first
     }
 
     @ViewBuilder
@@ -289,7 +297,8 @@ private struct FavoriteRow: View {
                 colorTemperatureSlider(range: range)
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.leading, 46)
+        .padding(.trailing, 12)
         .padding(.bottom, 8)
     }
 
@@ -368,21 +377,7 @@ private struct FavoriteRow: View {
         case .httpStatus(let code): return "Failed (\(code))"
         case .transport: return "Unreachable"
         case .decoding, .invalidResponse: return "Error"
-        default: return "Error"
         }
     }
 
-    private static func systemImage(for domain: String) -> String {
-        switch HADomain(rawValue: domain) {
-        case .sensor: return "gauge"
-        case .binarySensor: return "sensor"
-        case .light: return "lightbulb"
-        case .switchDomain: return "power"
-        case .cover: return "blinds"
-        case .lock: return "lock"
-        case .scene: return "sparkles"
-        case .script: return "applescript"
-        default: return "circle"
-        }
-    }
 }
