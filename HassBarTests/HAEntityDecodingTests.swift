@@ -55,4 +55,42 @@ final class HAEntityDecodingTests: XCTestCase {
         XCTAssertEqual(entity.friendlyName, "light.kitchen")
         XCTAssertEqual(entity.domain, "light")
     }
+
+    func testDecodesLightAttributes() throws {
+        let json = """
+        {
+            "entity_id": "light.bedroom",
+            "state": "on",
+            "attributes": {
+                "friendly_name": "Bedroom",
+                "brightness": 128,
+                "color_temp_kelvin": 3500,
+                "min_color_temp_kelvin": 2000,
+                "max_color_temp_kelvin": 6500,
+                "supported_color_modes": ["color_temp", "brightness"]
+            }
+        }
+        """.data(using: .utf8)!
+        let entity = try JSONDecoder().decode(HAEntity.self, from: json)
+        XCTAssertEqual(entity.brightnessPercent, 50)
+        XCTAssertTrue(entity.supportsBrightness)
+        XCTAssertTrue(entity.supportsColorTemperature)
+        XCTAssertEqual(entity.colorTempRange, 2000...6500)
+    }
+
+    func testLightWithoutColorTempModeDoesNotSupportTemperature() throws {
+        let json = """
+        {
+            "entity_id": "light.rgb",
+            "state": "on",
+            "attributes": {
+                "brightness": 255,
+                "supported_color_modes": ["rgb"]
+            }
+        }
+        """.data(using: .utf8)!
+        let entity = try JSONDecoder().decode(HAEntity.self, from: json)
+        XCTAssertTrue(entity.supportsBrightness)
+        XCTAssertFalse(entity.supportsColorTemperature)
+    }
 }

@@ -7,7 +7,7 @@ final class FakeHAClient: HomeAssistantCalling {
     var callResult: Result<Void, Error> = .success(())
     var testResult: Result<Void, Error> = .success(())
     var fetchEntityResult: Result<HAEntity, Error>?
-    private(set) var callInvocations: [(domain: String, service: String, entityID: String)] = []
+    private(set) var callInvocations: [(domain: String, service: String, entityID: String, serviceData: [String: Any]?)] = []
     private(set) var fetchCount = 0
     private(set) var fetchEntityInvocations: [String] = []
 
@@ -32,8 +32,8 @@ final class FakeHAClient: HomeAssistantCalling {
         return try fetchResult.get().first(where: { $0.entityID == entityID })!
     }
 
-    func callService(domain: String, service: String, entityID: String) async throws {
-        callInvocations.append((domain, service, entityID))
+    func callService(domain: String, service: String, entityID: String, serviceData: [String: Any]?) async throws {
+        callInvocations.append((domain, service, entityID, serviceData))
         try callResult.get()
     }
 }
@@ -94,8 +94,8 @@ final class HomeAssistantStoreTests: XCTestCase {
         await store.refresh()
         await store.callService(domain: "light", service: "turn_on", entityID: "light.a")
         XCTAssertEqual(
-            fake.callInvocations.map { "\($0.domain)|\($0.service)|\($0.entityID)" },
-            ["light|turn_on|light.a"]
+            fake.callInvocations.map { "\($0.domain)|\($0.service)|\($0.entityID)|\($0.serviceData ?? [:])" },
+            ["light|turn_on|light.a|[:]"]
         )
         XCTAssertTrue(store.pendingActions.isEmpty)
         XCTAssertEqual(store.entities["light.a"]?.state, "on")
@@ -126,5 +126,33 @@ final class HomeAssistantStoreTests: XCTestCase {
         let store = HomeAssistantStore(config: config)
         await store.refresh()
         XCTAssertEqual(store.status, .unconfigured)
+    }
+
+    func testSetBrightnessTurnsOnWithBrightness() async {
+        let (store, fake) = configuredStore(fetch: .success([entity("light.a", "off")]))
+        await store.refresh()
+        await store.setBrightness(entityID: "light.a", percent: 50)
+        XCTAssertEqual(fake.callInvocations.count, 1)
+        XCTAssertEqual(fake.callInvocations[0].domain, "light")
+        XCTAssertEqual(fake.callInvocations[0].service, "turn_on")
+        XCTAssertEqual(fake.callInvocations[0].entityID, "light.a")
+        XCTAssertEqual(fake.callInvocations[0].serviceData?["brightness"] as? Int, 128)
+    }
+
+    func testSetBrightnessToZeroTurnsOff() async {
+        let (store, fake) = configuredStore(fetch: .success([entity("light.a", "on")]))
+        await store.refresh()
+        await store.setBrightness(entityID: "light.a", percent: 0)
+        XCTAssertEqual(fake.callInvocations.count, 1)
+        XCTAssertEqual(fake.callInvocations[0].service, "turn_off")
+    }
+
+    func testSetColorTemperatureSendsKelvin() async {
+        let (store, fake) = configuredStore(fetch: .success([entity("light.a", "on")]))
+        await store.refresh()
+        await store.setColorTemperature(entityID: "light.a", kelvin: 3500)
+        XCTAssertEqual(fake.callInvocations.count, 1)
+        XCTAssertEqual(fake.callInvocations[0].service, "turn_on")
+        XCTAssertEqual(fake.callInvocations[0].serviceData?["color_temp_kelvin"] as? Int, 3500)
     }
 }

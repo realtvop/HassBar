@@ -177,7 +177,23 @@ private struct FavoriteRow: View {
     let entity: HAEntity
     let store: HomeAssistantStore
 
+    @State private var brightnessValue: Double = 0
+    @State private var colorTempValue: Double = 0
+
     var body: some View {
+        VStack(spacing: 0) {
+            mainRow
+            if entity.isLight && entity.state == "on" {
+                lightControls
+            }
+        }
+        .onAppear { syncSliderValues() }
+        .onChange(of: entity.id) { syncSliderValues() }
+        .onChange(of: entity.attributes.brightness) { syncBrightness() }
+        .onChange(of: entity.attributes.colorTempKelvin) { syncColorTemperature() }
+    }
+
+    private var mainRow: some View {
         HStack(spacing: 10) {
             Image(systemName: Self.systemImage(for: entity.domain))
                 .frame(width: 22)
@@ -206,43 +222,126 @@ private struct FavoriteRow: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .opacity(entity.isAvailable ? 1 : 0.6)
-        }
+    }
 
-        @ViewBuilder
-        private var actionButtons: some View {
-            let actions = EntityActionMapping.displayActions(for: entity)
-            if actions.isEmpty {
-                EmptyView()
-            } else {
-                HStack(spacing: 6) {
-                    ForEach(actions) { action in
-                        Button(action.title) {
-                            Task {
-                                await store.callService(
-                                    domain: action.domain,
-                                    service: action.service,
-                                    entityID: entity.id
-                                )
-                            }
+    @ViewBuilder
+    private var actionButtons: some View {
+        let actions = EntityActionMapping.displayActions(for: entity)
+        if actions.isEmpty {
+            EmptyView()
+        } else {
+            HStack(spacing: 6) {
+                ForEach(actions) { action in
+                    Button(action.title) {
+                        Task {
+                            await store.callService(
+                                domain: action.domain,
+                                service: action.service,
+                                entityID: entity.id
+                            )
                         }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
                     }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
             }
         }
+    }
 
-        private static func errorLabel(_ error: HAError) -> String {
-            switch error {
-            case .missingToken: return "No token"
-            case .httpStatus(let code): return "Failed (\(code))"
-            case .transport: return "Unreachable"
-            case .decoding, .invalidResponse: return "Error"
-            default: return "Error"
+    @ViewBuilder
+    private var lightControls: some View {
+        VStack(spacing: 4) {
+            if entity.supportsBrightness {
+                brightnessSlider
+            }
+            if entity.supportsColorTemperature, let range = entity.colorTempRange {
+                colorTemperatureSlider(range: range)
             }
         }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
+    }
 
-        private static func systemImage(for domain: String) -> String {
+    private var brightnessSlider: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "sun.max.fill")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+            Slider(
+                value: $brightnessValue,
+                in: 0...100,
+                step: 1,
+                onEditingChanged: { isEditing in
+                    if !isEditing {
+                        Task {
+                            await store.setBrightness(entityID: entity.id, percent: Int(brightnessValue))
+                        }
+                    }
+                }
+            )
+            Text("\(Int(brightnessValue))%")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 32, alignment: .trailing)
+        }
+    }
+
+    private func colorTemperatureSlider(range: ClosedRange<Int>) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "thermometer")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+            Slider(
+                value: $colorTempValue,
+                in: Double(range.lowerBound)...Double(range.upperBound),
+                step: 100,
+                onEditingChanged: { isEditing in
+                    if !isEditing {
+                        Task {
+                            await store.setColorTemperature(entityID: entity.id, kelvin: Int(colorTempValue))
+                        }
+                    }
+                }
+            )
+            Text("\(Int(colorTempValue))K")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 40, alignment: .trailing)
+        }
+    }
+
+    private func syncSliderValues() {
+        syncBrightness()
+        syncColorTemperature()
+    }
+
+    private func syncBrightness() {
+        brightnessValue = Double(entity.brightnessPercent ?? 100)
+    }
+
+    private func syncColorTemperature() {
+        if let kelvin = entity.attributes.colorTempKelvin {
+            colorTempValue = Double(kelvin)
+        } else if let range = entity.colorTempRange {
+            colorTempValue = Double((range.lowerBound + range.upperBound) / 2)
+        } else {
+            colorTempValue = 4000
+        }
+    }
+
+    private static func errorLabel(_ error: HAError) -> String {
+        switch error {
+        case .missingToken: return "No token"
+        case .httpStatus(let code): return "Failed (\(code))"
+        case .transport: return "Unreachable"
+        case .decoding, .invalidResponse: return "Error"
+        default: return "Error"
+        }
+    }
+
+    private static func systemImage(for domain: String) -> String {
         switch HADomain(rawValue: domain) {
         case .sensor: return "gauge"
         case .binarySensor: return "sensor"

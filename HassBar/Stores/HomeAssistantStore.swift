@@ -122,7 +122,7 @@ final class HomeAssistantStore: HAWebsocketDelegate {
 
     // MARK: - Service calls
 
-    func callService(domain: String, service: String, entityID: String) async {
+    func callService(domain: String, service: String, entityID: String, serviceData: [String: Any]? = nil) async {
         guard config.isConfigured, let url = URL(string: config.haURL), let token = config.token, !token.isEmpty else {
             actionErrors[entityID] = .missingToken
             return
@@ -133,7 +133,7 @@ final class HomeAssistantStore: HAWebsocketDelegate {
         actionErrors[entityID] = nil
         let previousState = entities[entityID]?.state
         do {
-            try await client.callService(domain: domain, service: service, entityID: entityID)
+            try await client.callService(domain: domain, service: service, entityID: entityID, serviceData: serviceData)
             // HA may not apply the service call synchronously, so poll the
             // entity state for a short window until it changes (or give up
             // and let WebSocket `state_changed` events handle it). This keeps
@@ -147,6 +147,24 @@ final class HomeAssistantStore: HAWebsocketDelegate {
             actionErrors[entityID] = .transport(error.localizedDescription)
             pendingActions.remove(entityID)
         }
+    }
+
+    // MARK: - Light controls
+
+    /// Sets a light's brightness as a percentage (0-100). A value of 0 turns the light off.
+    func setBrightness(entityID: String, percent: Int) async {
+        let clamped = max(0, min(100, percent))
+        if clamped == 0 {
+            await callService(domain: "light", service: "turn_off", entityID: entityID)
+        } else {
+            let brightness = Int((Double(clamped) / 100.0 * 255).rounded())
+            await callService(domain: "light", service: "turn_on", entityID: entityID, serviceData: ["brightness": brightness])
+        }
+    }
+
+    /// Sets a light's color temperature in Kelvin.
+    func setColorTemperature(entityID: String, kelvin: Int) async {
+        await callService(domain: "light", service: "turn_on", entityID: entityID, serviceData: ["color_temp_kelvin": kelvin])
     }
 
     // MARK: - Favorites

@@ -52,7 +52,14 @@ protocol HomeAssistantCalling: Sendable {
     func testConnection() async throws
     func fetchStates() async throws -> [HAEntity]
     func fetchEntity(entityID: String) async throws -> HAEntity
-    func callService(domain: String, service: String, entityID: String) async throws
+    func callService(domain: String, service: String, entityID: String, serviceData: [String: Any]?) async throws
+}
+
+extension HomeAssistantCalling {
+    /// Convenience overload for service calls that do not need extra data.
+    func callService(domain: String, service: String, entityID: String) async throws {
+        try await callService(domain: domain, service: service, entityID: entityID, serviceData: nil)
+    }
 }
 
 /// Home Assistant REST client. Owns no SwiftUI/App state.
@@ -121,9 +128,16 @@ struct HomeAssistantClient: HomeAssistantCalling, Sendable {
         }
     }
 
-    /// Calls `POST /api/services/{domain}/{service}` with `{"entity_id": ...}`.
-    func callService(domain: String, service: String, entityID: String) async throws {
-        let body = try JSONSerialization.data(withJSONObject: ["entity_id": entityID])
+    /// Calls `POST /api/services/{domain}/{service}` with `{"entity_id": ...}` plus any
+    /// additional `serviceData` entries (e.g. `brightness`, `color_temp_kelvin`).
+    func callService(domain: String, service: String, entityID: String, serviceData: [String: Any]? = nil) async throws {
+        var payload: [String: Any] = ["entity_id": entityID]
+        if let serviceData {
+            for (key, value) in serviceData {
+                payload[key] = value
+            }
+        }
+        let body = try JSONSerialization.data(withJSONObject: payload)
         let request = try HARequestBuilder.makeRequest(
             baseURL: connection.baseURL,
             token: connection.token,

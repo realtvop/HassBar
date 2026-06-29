@@ -13,10 +13,20 @@ import Foundation
 struct HAAttributes: Decodable, Equatable, Sendable {
     var friendlyName: String?
     var unitOfMeasurement: String?
+    var brightness: Int?
+    var colorTempKelvin: Int?
+    var minColorTempKelvin: Int?
+    var maxColorTempKelvin: Int?
+    var supportedColorModes: [String]?
 
     enum CodingKeys: String, CodingKey {
         case friendlyName = "friendly_name"
         case unitOfMeasurement = "unit_of_measurement"
+        case brightness
+        case colorTempKelvin = "color_temp_kelvin"
+        case minColorTempKelvin = "min_color_temp_kelvin"
+        case maxColorTempKelvin = "max_color_temp_kelvin"
+        case supportedColorModes = "supported_color_modes"
     }
 }
 
@@ -69,6 +79,36 @@ struct HAEntity: Decodable, Equatable, Identifiable, Sendable {
 
     var isAvailable: Bool {
         state != "unavailable" && state != "unknown"
+    }
+
+    // MARK: - Light helpers
+
+    var isLight: Bool { domain == "light" }
+
+    /// Brightness as a percentage (0-100), or `nil` when not reported.
+    var brightnessPercent: Int? {
+        guard let brightness = attributes.brightness else { return nil }
+        return Int((Double(brightness) / 255.0 * 100).rounded())
+    }
+
+    /// Whether the light reports brightness support.
+    var supportsBrightness: Bool {
+        isLight && attributes.brightness != nil
+    }
+
+    /// Whether the light reports color temperature support.
+    var supportsColorTemperature: Bool {
+        guard isLight else { return false }
+        if let modes = attributes.supportedColorModes {
+            return modes.contains("color_temp")
+        }
+        return attributes.minColorTempKelvin != nil && attributes.maxColorTempKelvin != nil
+    }
+
+    /// Effective color temperature range in Kelvin.
+    var colorTempRange: ClosedRange<Int>? {
+        guard let min = attributes.minColorTempKelvin, let max = attributes.maxColorTempKelvin else { return nil }
+        return min...max
     }
 }
 
