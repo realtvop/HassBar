@@ -40,6 +40,42 @@ struct EntitySelectionView: View {
     // MARK: - Entity list
 
     private var entityList: some View {
+        VStack(spacing: 0) {
+            filterBar
+            Divider()
+            listContent
+        }
+    }
+
+    private var filterBar: some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 4) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                    .font(.system(size: 13))
+                TextField("Search", text: $searchText, prompt: Text("Search by name or ID"))
+                    .textFieldStyle(.plain)
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .background(.quaternary.opacity(0.3))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+
+            Picker("Domain", selection: $selectedDomain) {
+                Text("All Domains").tag(HADomain?.none)
+                ForEach(HADomain.allCases, id: \.self) { domain in
+                    Text(domain.rawValue).tag(HADomain?.some(domain))
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(width: 160)
+
+            Spacer()
+        }
+        .padding()
+    }
+
+    private var listContent: some View {
         List {
             if !store.favoriteRows.isEmpty {
                 Section("Favorites") {
@@ -71,19 +107,6 @@ struct EntitySelectionView: View {
             }
         }
         .listStyle(.inset)
-        .searchable(text: $searchText, prompt: "Search by name or ID")
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Picker("Domain", selection: $selectedDomain) {
-                    Text("All Domains").tag(HADomain?.none)
-                    ForEach(HADomain.allCases, id: \.self) { domain in
-                        Text(domain.rawValue).tag(HADomain?.some(domain))
-                    }
-                }
-                .pickerStyle(.menu)
-                .frame(width: 180)
-            }
-        }
     }
 
     private var filteredEntities: [HAEntity] {
