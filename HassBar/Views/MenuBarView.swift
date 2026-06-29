@@ -337,10 +337,10 @@ private struct FavoriteRow: View {
                 step: 1,
                 trackStyle: .valueFill(brightnessColor),
                 onCommit: {
-                    await store.setBrightness(entityID: entity.id, percent: Int(brightnessValue))
+                    await store.setBrightness(entityID: entity.id, percent: Int(brightnessValue.rounded()))
                 }
             )
-            Text("\(Int(brightnessValue))%")
+            Text("\(Int(brightnessValue.rounded()))%")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(width: 32, alignment: .trailing)
@@ -458,7 +458,7 @@ private struct GradientSlider: View {
                         Circle()
                             .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
                     }
-                    .offset(x: trackWidth * progress)
+                    .position(x: thumbSize / 2 + trackWidth * progress, y: proxy.size.height / 2)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
@@ -492,14 +492,16 @@ private struct GradientSlider: View {
                             endPoint: .trailing
                         )
                     )
-                    .frame(height: trackHeight)
-                    .frame(maxWidth: .infinity)
+                    .frame(width: trackWidth, height: trackHeight)
+                    .padding(.leading, thumbSize / 2)
             case .valueFill(let color):
                 Capsule()
                     .fill(color)
-                    .frame(width: thumbSize / 2 + trackWidth * progress, height: trackHeight)
+                    .frame(width: max(trackWidth * progress, 0), height: trackHeight)
+                    .padding(.leading, thumbSize / 2)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 
     private func updateValue(from locationX: CGFloat, trackWidth: CGFloat) {
