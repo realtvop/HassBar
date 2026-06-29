@@ -7,6 +7,47 @@
 
 import Foundation
 
+struct RGBColorComponents: Equatable, Sendable {
+    let red: Double
+    let green: Double
+    let blue: Double
+}
+
+enum ColorTemperatureRGB {
+    static func components(forKelvin kelvin: Int) -> RGBColorComponents {
+        let temperature = Double(min(max(kelvin, 1_000), 40_000)) / 100.0
+        let red: Double
+        let green: Double
+        let blue: Double
+
+        if temperature <= 66 {
+            red = 255
+            green = 99.4708025861 * log(temperature) - 161.1195681661
+        } else {
+            red = 329.698727446 * pow(temperature - 60, -0.1332047592)
+            green = 288.1221695283 * pow(temperature - 60, -0.0755148492)
+        }
+
+        if temperature >= 66 {
+            blue = 255
+        } else if temperature <= 19 {
+            blue = 0
+        } else {
+            blue = 138.5177312231 * log(temperature - 10) - 305.0447927307
+        }
+
+        return RGBColorComponents(
+            red: clampedChannel(red) / 255.0,
+            green: clampedChannel(green) / 255.0,
+            blue: clampedChannel(blue) / 255.0
+        )
+    }
+
+    private static func clampedChannel(_ value: Double) -> Double {
+        min(max(value, 0), 255)
+    }
+}
+
 /// Attributes payload for a Home Assistant entity state.
 /// Only the fields HassBar cares about are modeled; all other keys
 /// are ignored by the decoder so unexpected attribute shapes do not fail decoding.

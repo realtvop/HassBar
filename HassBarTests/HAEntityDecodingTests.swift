@@ -97,6 +97,18 @@ final class HAEntityDecodingTests: XCTestCase {
         XCTAssertEqual(entity.colorTempRange, 2000...6536)
     }
 
+    func testColorTemperatureRGBComponents() {
+        let warm = ColorTemperatureRGB.components(forKelvin: 2000)
+        let daylight = ColorTemperatureRGB.components(forKelvin: 6500)
+
+        XCTAssertEqual(warm.red, 1, accuracy: 0.001)
+        XCTAssertGreaterThan(warm.green, warm.blue)
+        XCTAssertLessThan(warm.blue, 0.25)
+        XCTAssertEqual(daylight.red, 1, accuracy: 0.001)
+        XCTAssertGreaterThan(daylight.green, 0.95)
+        XCTAssertGreaterThan(daylight.blue, 0.95)
+    }
+
     func testLightWithoutColorTempModeDoesNotSupportTemperature() throws {
         let json = """
         {

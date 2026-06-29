@@ -351,7 +351,7 @@ private struct FavoriteRow: View {
                 value: $colorTempValue,
                 range: Double(range.lowerBound)...Double(range.upperBound),
                 step: 100,
-                colors: [.orange, .yellow.opacity(0.65), .cyan.opacity(0.75), .blue],
+                colors: colorTemperatureColors(for: range),
                 onCommit: {
                     await store.setColorTemperature(entityID: entity.id, kelvin: Int(colorTempValue))
                 }
@@ -360,6 +360,16 @@ private struct FavoriteRow: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(width: 40, alignment: .trailing)
+        }
+    }
+
+    private func colorTemperatureColors(for range: ClosedRange<Int>) -> [Color] {
+        let samples = 8
+        return (0...samples).map { index in
+            let progress = Double(index) / Double(samples)
+            let kelvin = Double(range.lowerBound) + progress * Double(range.upperBound - range.lowerBound)
+            let components = ColorTemperatureRGB.components(forKelvin: Int(kelvin.rounded()))
+            return Color(red: components.red, green: components.green, blue: components.blue)
         }
     }
 
