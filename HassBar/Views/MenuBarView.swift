@@ -440,6 +440,7 @@ private struct GradientSlider: View {
 
     private let thumbSize: CGFloat = 13
     private let trackHeight: CGFloat = 6
+    private let scrollSensitivity = 0.35
 
     var body: some View {
         GeometryReader { proxy in
@@ -462,11 +463,15 @@ private struct GradientSlider: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { updateValue(from: $0.location.x, trackWidth: trackWidth) }
-                    .onEnded { _ in Task { await onCommit() } }
-            )
+            .overlay {
+                SliderEventView { locationX in
+                    updateValue(from: locationX, trackWidth: trackWidth)
+                } onScroll: { delta in
+                    updateValue(byScrollDelta: delta)
+                } onCommit: {
+                    Task { await onCommit() }
+                }
+            }
         }
         .frame(height: 18)
         .accessibilityElement()
@@ -518,5 +523,82 @@ private struct GradientSlider: View {
         let rawValue = range.lowerBound + Double(clampedX / trackWidth) * (range.upperBound - range.lowerBound)
         let steppedValue = range.lowerBound + ((rawValue - range.lowerBound) / step).rounded() * step
         value = min(max(steppedValue, range.lowerBound), range.upperBound)
+    }
+
+    private func updateValue(byScrollDelta delta: CGFloat) {
+        guard delta != 0, range.upperBound > range.lowerBound else { return }
+
+        let valueRange = range.upperBound - range.lowerBound
+        let scrollStep = max(step, valueRange / 100)
+        let rawValue = value + Double(delta) * scrollStep * scrollSensitivity
+        let steppedValue = range.lowerBound + ((rawValue - range.lowerBound) / step).rounded() * step
+        value = min(max(steppedValue, range.lowerBound), range.upperBound)
+    }
+}
+
+private struct SliderEventView: NSViewRepresentable {
+    let onDrag: (CGFloat) -> Void
+    let onScroll: (CGFloat) -> Void
+    let onCommit: () -> Void
+
+    func makeNSView(context: Context) -> SliderEventCatcherView {
+        let view = SliderEventCatcherView()
+        view.onDrag = onDrag
+        view.onScroll = onScroll
+        view.onCommit = onCommit
+        return view
+    }
+
+    func updateNSView(_ nsView: SliderEventCatcherView, context: Context) {
+        nsView.onDrag = onDrag
+        nsView.onScroll = onScroll
+        nsView.onCommit = onCommit
+    }
+
+    final class SliderEventCatcherView: NSView {
+        var onDrag: ((CGFloat) -> Void)?
+        var onScroll: ((CGFloat) -> Void)?
+        var onCommit: (() -> Void)?
+
+        override var acceptsFirstResponder: Bool { true }
+
+        override func mouseDown(with event: NSEvent) {
+            handleDrag(event)
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            handleDrag(event)
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            handleDrag(event)
+            onCommit?()
+        }
+
+        override func scrollWheel(with event: NSEvent) {
+            guard event.hasPreciseScrollingDeltas else {
+                super.scrollWheel(with: event)
+                return
+            }
+            guard event.momentumPhase == [] else { return }
+
+            let horizontalDelta = event.scrollingDeltaX
+            guard abs(horizontalDelta) > abs(event.scrollingDeltaY), horizontalDelta != 0 else {
+                super.scrollWheel(with: event)
+                return
+            }
+
+            let directionMultiplier: CGFloat = event.isDirectionInvertedFromDevice ? 1 : -1
+            onScroll?(horizontalDelta * directionMultiplier)
+
+            if event.phase == .ended || event.momentumPhase == .ended {
+                onCommit?()
+            }
+        }
+
+        private func handleDrag(_ event: NSEvent) {
+            let location = convert(event.locationInWindow, from: nil)
+            onDrag?(location.x)
+        }
     }
 }
