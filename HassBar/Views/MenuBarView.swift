@@ -114,7 +114,17 @@ struct MenuBarView: View {
         case .connecting: return Text("Connecting…")
         case .unconfigured: return Text("Not configured")
         case .disconnected: return Text("Disconnected")
-        case .error: return Text("Connection error")
+        case .error(let error): return Text(Self.errorLabel(error))
+        }
+    }
+
+    private static func errorLabel(_ error: HAError) -> String {
+        switch error {
+        case .missingToken: return "Missing token"
+        case .invalidResponse: return "Invalid response"
+        case .httpStatus(let code): return "HTTP \(code)"
+        case .transport: return "Could not reach server"
+        case .decoding: return "Decode error"
         }
     }
 

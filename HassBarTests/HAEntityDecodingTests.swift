@@ -97,6 +97,26 @@ final class HAEntityDecodingTests: XCTestCase {
         XCTAssertEqual(entity.colorTempRange, 2000...6536)
     }
 
+    func testDecodesLossyLightNumberAttributes() throws {
+        let json = """
+        {
+            "entity_id": "light.tolerant_bulb",
+            "state": "on",
+            "attributes": {
+                "brightness": 127.6,
+                "color_temp_kelvin": "3499.6",
+                "min_color_temp_kelvin": "2000",
+                "max_color_temp_kelvin": 6500.4,
+                "supported_color_modes": ["color_temp"]
+            }
+        }
+        """.data(using: .utf8)!
+        let entity = try JSONDecoder().decode(HAEntity.self, from: json)
+        XCTAssertEqual(entity.attributes.brightness, 128)
+        XCTAssertEqual(entity.colorTempKelvin, 3500)
+        XCTAssertEqual(entity.colorTempRange, 2000...6500)
+    }
+
     func testColorTemperatureRGBComponents() {
         let warm = ColorTemperatureRGB.components(forKelvin: 2000)
         let daylight = ColorTemperatureRGB.components(forKelvin: 6500)

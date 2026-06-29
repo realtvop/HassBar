@@ -75,6 +75,60 @@ struct HAAttributes: Decodable, Equatable, Sendable {
         case maxMireds = "max_mireds"
         case supportedColorModes = "supported_color_modes"
     }
+
+    init(
+        friendlyName: String?,
+        unitOfMeasurement: String?,
+        brightness: Int? = nil,
+        colorTempKelvin: Int? = nil,
+        colorTempMireds: Int? = nil,
+        minColorTempKelvin: Int? = nil,
+        maxColorTempKelvin: Int? = nil,
+        minMireds: Int? = nil,
+        maxMireds: Int? = nil,
+        supportedColorModes: [String]? = nil
+    ) {
+        self.friendlyName = friendlyName
+        self.unitOfMeasurement = unitOfMeasurement
+        self.brightness = brightness
+        self.colorTempKelvin = colorTempKelvin
+        self.colorTempMireds = colorTempMireds
+        self.minColorTempKelvin = minColorTempKelvin
+        self.maxColorTempKelvin = maxColorTempKelvin
+        self.minMireds = minMireds
+        self.maxMireds = maxMireds
+        self.supportedColorModes = supportedColorModes
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        friendlyName = try container.decodeIfPresent(String.self, forKey: .friendlyName)
+        unitOfMeasurement = try container.decodeIfPresent(String.self, forKey: .unitOfMeasurement)
+        brightness = container.decodeLossyIntIfPresent(forKey: .brightness)
+        colorTempKelvin = container.decodeLossyIntIfPresent(forKey: .colorTempKelvin)
+        colorTempMireds = container.decodeLossyIntIfPresent(forKey: .colorTempMireds)
+        minColorTempKelvin = container.decodeLossyIntIfPresent(forKey: .minColorTempKelvin)
+        maxColorTempKelvin = container.decodeLossyIntIfPresent(forKey: .maxColorTempKelvin)
+        minMireds = container.decodeLossyIntIfPresent(forKey: .minMireds)
+        maxMireds = container.decodeLossyIntIfPresent(forKey: .maxMireds)
+        supportedColorModes = try? container.decodeIfPresent([String].self, forKey: .supportedColorModes)
+    }
+}
+
+private extension KeyedDecodingContainer where K == HAAttributes.CodingKeys {
+    func decodeLossyIntIfPresent(forKey key: K) -> Int? {
+        if let value = try? decodeIfPresent(Int.self, forKey: key) {
+            return value
+        }
+        if let value = try? decodeIfPresent(Double.self, forKey: key) {
+            return Int(value.rounded())
+        }
+        if let value = try? decodeIfPresent(String.self, forKey: key),
+           let number = Double(value) {
+            return Int(number.rounded())
+        }
+        return nil
+    }
 }
 
 /// A single Home Assistant entity state as returned by `/api/states`
