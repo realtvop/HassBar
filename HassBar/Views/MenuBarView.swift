@@ -12,6 +12,8 @@ struct MenuBarView: View {
     @Binding var settingsTab: SettingsTab
     @Environment(\.openSettings) private var openSettings
 
+    @State private var expandedEntityID: String? = nil
+
     private func manageEntities() {
         settingsTab = .entities
         openSettings()
@@ -134,7 +136,16 @@ struct MenuBarView: View {
             ScrollView {
                 VStack(spacing: 0) {
                     ForEach(store.favoriteRows) { entity in
-                        FavoriteRow(entity: entity, store: store)
+                        FavoriteRow(
+                            entity: entity,
+                            store: store,
+                            isExpanded: expandedEntityID == entity.id,
+                            expand: {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    expandedEntityID = (expandedEntityID == entity.id ? nil : entity.id)
+                                }
+                            }
+                        )
                         if entity.id != store.favoriteRows.last?.id {
                             Divider()
                         }
@@ -176,14 +187,20 @@ struct MenuBarView: View {
 private struct FavoriteRow: View {
     let entity: HAEntity
     let store: HomeAssistantStore
+    let isExpanded: Bool
+    let expand: () -> Void
 
     @State private var brightnessValue: Double = 0
     @State private var colorTempValue: Double = 0
 
+    private var canExpand: Bool {
+        entity.isLight && entity.state == "on" && (entity.supportsBrightness || entity.supportsColorTemperature)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             mainRow
-            if entity.isLight && entity.state == "on" {
+            if isExpanded {
                 lightControls
             }
         }
@@ -199,29 +216,43 @@ private struct FavoriteRow: View {
                 .frame(width: 22)
                 .foregroundStyle(.tint)
             VStack(alignment: .leading, spacing: 2) {
-                    Text(entity.friendlyName)
-                        .lineLimit(1)
-                    HStack(spacing: 6) {
-                        Text(entity.displayState)
+                Text(entity.friendlyName)
+                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(entity.displayState)
+                        .font(.caption)
+                        .foregroundStyle(entity.isAvailable ? Color.secondary : Color.red)
+                    if let actionError = store.actionErrors[entity.id] {
+                        Text(Self.errorLabel(actionError))
                             .font(.caption)
-                            .foregroundStyle(entity.isAvailable ? Color.secondary : Color.red)
-                        if let actionError = store.actionErrors[entity.id] {
-                            Text(Self.errorLabel(actionError))
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                        }
+                            .foregroundStyle(.red)
                     }
                 }
-                Spacer()
-                if store.pendingActions.contains(entity.id) {
-                    ProgressView().controlSize(.small)
-                } else if entity.isAvailable {
-                    actionButtons
-                }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .opacity(entity.isAvailable ? 1 : 0.6)
+            Spacer()
+            if canExpand {
+                disclosureButton
+            }
+            if store.pendingActions.contains(entity.id) {
+                ProgressView().controlSize(.small)
+            } else if entity.isAvailable {
+                actionButtons
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .opacity(entity.isAvailable ? 1 : 0.6)
+    }
+
+    private var disclosureButton: some View {
+        Button(action: expand) {
+            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
+        }
+        .buttonStyle(.plain)
+        .help(isExpanded ? "Collapse" : "Expand")
     }
 
     @ViewBuilder
