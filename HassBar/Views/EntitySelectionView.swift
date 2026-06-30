@@ -82,7 +82,6 @@ struct EntitySelectionView: View {
                     ForEach(store.favoriteRows) { entity in
                         EntityRow(
                             entity: entity,
-                            displayName: store.displayName(for: entity),
                             alias: aliasBinding(for: entity.id),
                             isFavorite: true
                         ) {
@@ -103,7 +102,6 @@ struct EntitySelectionView: View {
                     ForEach(filteredEntities) { entity in
                         EntityRow(
                             entity: entity,
-                            displayName: store.displayName(for: entity),
                             alias: aliasBinding(for: entity.id),
                             isFavorite: store.favorites.contains(entity.id)
                         ) {
@@ -147,7 +145,6 @@ struct EntitySelectionView: View {
 
 private struct EntityRow: View {
     let entity: HAEntity
-    let displayName: String
     @Binding var alias: String
     let isFavorite: Bool
     let toggle: () -> Void
@@ -162,7 +159,7 @@ private struct EntityRow: View {
                 EntityIconBadge(entity: entity, size: 38)
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(displayName)
+                    Text(entity.friendlyName)
                         .font(.system(size: 14, weight: .medium))
                         .lineLimit(1)
 
