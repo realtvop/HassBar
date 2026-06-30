@@ -127,10 +127,13 @@ struct EntitySelectionView: View {
                     entity: entity,
                     alias: aliasBinding(for: entity.id),
                     isFavorite: true,
-                    dragHandle: FavoriteDragHandle {
-                        draggedFavoriteID = entity.id
-                        return NSItemProvider(object: entity.id as NSString)
-                    }
+                    dragHandle: FavoriteDragHandle(
+                        itemProvider: {
+                            draggedFavoriteID = entity.id
+                            return NSItemProvider(object: entity.id as NSString)
+                        },
+                        preview: AnyView(FavoriteDragPreview(entity: entity, alias: store.alias(for: entity.id)))
+                    )
                 ) {
                     store.toggleFavorite(entity.id)
                 }
@@ -262,6 +265,7 @@ private struct EntityRow: View {
 
 private struct FavoriteDragHandle: View {
     let itemProvider: () -> NSItemProvider
+    let preview: AnyView
 
     var body: some View {
         Image(systemName: "line.3.horizontal")
@@ -269,8 +273,61 @@ private struct FavoriteDragHandle: View {
             .foregroundStyle(.secondary)
             .frame(width: 28, height: 28)
             .contentShape(Rectangle())
-            .onDrag(itemProvider)
+            .onDrag(itemProvider) {
+                preview
+            }
             .help("Drag to Reorder")
+    }
+}
+
+private struct FavoriteDragPreview: View {
+    let entity: HAEntity
+    let alias: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "checkmark")
+                .font(.system(size: 15, weight: .semibold))
+                .frame(width: 18)
+
+            EntityIconBadge(entity: entity, size: 38)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(entity.friendlyName)
+                    .font(.system(size: 14, weight: .medium))
+                    .lineLimit(1)
+
+                HStack(spacing: 6) {
+                    Text(entity.entityID)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("·")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(entity.state)
+                        .font(.caption)
+                        .foregroundStyle(entity.isAvailable ? Color.secondary : Color.red)
+                }
+            }
+
+            Spacer()
+
+            Text(alias.isEmpty ? "Alias" : alias)
+                .font(.system(size: 13))
+                .foregroundStyle(alias.isEmpty ? Color.secondary : Color.primary)
+                .lineLimit(1)
+                .frame(width: 140, alignment: .leading)
+
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 28, height: 28)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(width: 520, alignment: .leading)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 
