@@ -58,17 +58,27 @@ enum EntityMenuStyle {
 
 struct EntityIconBadge: View {
     let entity: HAEntity
+    var customIconName: String? = nil
     var size: CGFloat = 36
 
     var body: some View {
         ZStack {
             Circle()
                 .fill(iconBackground)
-            Image(systemName: EntityMenuStyle.systemImage(for: entity.domain))
+            resolvedIcon
                 .font(.system(size: size * 0.48, weight: .semibold))
                 .foregroundStyle(EntityMenuStyle.iconTint(for: entity))
         }
         .frame(width: size, height: size)
+    }
+
+    @ViewBuilder
+    private var resolvedIcon: some View {
+        if let customIconName, !customIconName.isEmpty, NSImage(systemSymbolName: customIconName, accessibilityDescription: nil) != nil {
+            Image(systemName: customIconName)
+        } else {
+            Image(systemName: EntityMenuStyle.systemImage(for: entity.domain))
+        }
     }
 
     private var iconBackground: Color {

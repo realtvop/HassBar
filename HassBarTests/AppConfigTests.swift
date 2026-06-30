@@ -46,4 +46,15 @@ final class AppConfigTests: XCTestCase {
         config.clearToken()
         XCTAssertNil(config.token)
     }
+
+    func testEntityIconsRoundTrip() {
+        let config = TestSupport.makeConfig()
+        XCTAssertEqual(config.entityIcons.iconsByEntityID, [:])
+        
+        var icons = EntityIcons()
+        icons.setIcon("sparkles", for: "switch.party")
+        config.entityIcons = icons
+        
+        XCTAssertEqual(config.entityIcons.icon(for: "switch.party"), "sparkles")
+    }
 }

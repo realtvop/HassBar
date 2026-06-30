@@ -155,4 +155,13 @@ final class HomeAssistantStoreTests: XCTestCase {
         XCTAssertEqual(fake.callInvocations[0].service, "turn_on")
         XCTAssertEqual(fake.callInvocations[0].serviceData?["color_temp_kelvin"] as? Int, 3500)
     }
+
+    func testCustomIconMethods() {
+        let (store, _) = configuredStore()
+        XCTAssertEqual(store.customIcon(for: "light.living_room"), "")
+        
+        store.setCustomIcon("sparkles", for: "light.living_room")
+        XCTAssertEqual(store.customIcon(for: "light.living_room"), "sparkles")
+        XCTAssertEqual(store.config.entityIcons.icon(for: "light.living_room"), "sparkles")
+    }
 }

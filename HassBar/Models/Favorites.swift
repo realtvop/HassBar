@@ -110,3 +110,41 @@ extension EntityAliases: RawRepresentable {
         (try? String(data: JSONEncoder().encode(namesByEntityID), encoding: .utf8)) ?? "{}"
     }
 }
+
+/// User-defined display icons keyed by Home Assistant entity id.
+struct EntityIcons: Equatable, Sendable {
+    private(set) var iconsByEntityID: [String: String]
+
+    init(iconsByEntityID: [String: String] = [:]) {
+        self.iconsByEntityID = iconsByEntityID.filter { !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    func icon(for id: String) -> String? {
+        iconsByEntityID[id]
+    }
+
+    mutating func setIcon(_ icon: String, for id: String) {
+        let trimmed = icon.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            iconsByEntityID[id] = nil
+        } else {
+            iconsByEntityID[id] = trimmed
+        }
+    }
+}
+
+extension EntityIcons: RawRepresentable {
+    /// JSON-encoded icon dictionary, used for `UserDefaults` persistence.
+    public init?(rawValue: String) {
+        guard let data = rawValue.data(using: .utf8),
+              let icons = try? JSONDecoder().decode([String: String].self, from: data) else {
+            return nil
+        }
+        self.init(iconsByEntityID: icons)
+    }
+
+    public var rawValue: String {
+        (try? String(data: JSONEncoder().encode(iconsByEntityID), encoding: .utf8)) ?? "{}"
+    }
+}
+

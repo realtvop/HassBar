@@ -243,7 +243,11 @@ private struct SensorStatusSection: View {
     var body: some View {
         LazyVGrid(columns: columns, spacing: 6) {
             ForEach(entities) { entity in
-                SensorStatusTile(entity: entity, displayName: store.displayName(for: entity))
+                SensorStatusTile(
+                    entity: entity,
+                    displayName: store.displayName(for: entity),
+                    customIconName: store.customIcon(for: entity.id)
+                )
             }
         }
         .padding(.horizontal, 12)
@@ -253,10 +257,11 @@ private struct SensorStatusSection: View {
 private struct SensorStatusTile: View {
     let entity: HAEntity
     let displayName: String
+    let customIconName: String?
 
     var body: some View {
         HStack(spacing: 8) {
-            EntityIconBadge(entity: entity, size: 26)
+            EntityIconBadge(entity: entity, customIconName: customIconName, size: 26)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(displayName)
@@ -379,12 +384,12 @@ private struct FavoriteRow: View {
                     )
                 }
             } label: {
-                EntityIconBadge(entity: entity, size: 28)
+                EntityIconBadge(entity: entity, customIconName: store.customIcon(for: entity.id), size: 28)
             }
             .buttonStyle(.plain)
             .help(action.title)
         } else {
-            EntityIconBadge(entity: entity, size: 28)
+            EntityIconBadge(entity: entity, customIconName: store.customIcon(for: entity.id), size: 28)
         }
     }
 

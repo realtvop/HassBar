@@ -23,7 +23,7 @@ struct EntitySelectionView: View {
                 entityList
             }
         }
-        .frame(minWidth: 560, minHeight: 400)
+        .frame(minWidth: 640, minHeight: 450)
         .task {
             await store.refreshIfConfigured()
         }
@@ -90,6 +90,7 @@ struct EntitySelectionView: View {
                         EntityRow(
                             entity: entity,
                             alias: aliasBinding(for: entity.id),
+                            customIcon: customIconBinding(for: entity.id),
                             isFavorite: store.favorites.contains(entity.id)
                         ) {
                             store.toggleFavorite(entity.id)
@@ -126,13 +127,18 @@ struct EntitySelectionView: View {
                 EntityRow(
                     entity: entity,
                     alias: aliasBinding(for: entity.id),
+                    customIcon: customIconBinding(for: entity.id),
                     isFavorite: true,
                     dragHandle: FavoriteDragHandle(
                         itemProvider: {
                             draggedFavoriteID = entity.id
                             return NSItemProvider(object: entity.id as NSString)
                         },
-                        preview: AnyView(FavoriteDragPreview(entity: entity, alias: store.alias(for: entity.id)))
+                        preview: AnyView(FavoriteDragPreview(
+                            entity: entity,
+                            alias: store.alias(for: entity.id),
+                            customIconName: store.customIcon(for: entity.id)
+                        ))
                     )
                 ) {
                     store.toggleFavorite(entity.id)
@@ -184,6 +190,13 @@ struct EntitySelectionView: View {
         )
     }
 
+    private func customIconBinding(for entityID: String) -> Binding<String> {
+        Binding(
+            get: { store.customIcon(for: entityID) },
+            set: { store.setCustomIcon($0, for: entityID) }
+        )
+    }
+
     nonisolated private static func isSensor(_ entity: HAEntity) -> Bool {
         entity.entityID.hasPrefix("sensor.") || entity.entityID.hasPrefix("binary_sensor.")
     }
@@ -194,6 +207,7 @@ struct EntitySelectionView: View {
 private struct EntityRow: View {
     let entity: HAEntity
     @Binding var alias: String
+    @Binding var customIcon: String
     let isFavorite: Bool
     var dragHandle: FavoriteDragHandle? = nil
     let toggle: () -> Void
@@ -205,7 +219,7 @@ private struct EntityRow: View {
             HStack(spacing: 12) {
                 favoriteMark
 
-                EntityIconBadge(entity: entity, size: 38)
+                EntityIconBadge(entity: entity, customIconName: customIcon, size: 38)
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(entity.friendlyName)
@@ -233,6 +247,10 @@ private struct EntityRow: View {
             TextField("Alias", text: $alias, prompt: Text("Alias"))
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 140)
+
+            TextField("Icon", text: $customIcon, prompt: Text("SF Symbol"))
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 110)
 
             if let dragHandle {
                 dragHandle
@@ -283,6 +301,7 @@ private struct FavoriteDragHandle: View {
 private struct FavoriteDragPreview: View {
     let entity: HAEntity
     let alias: String
+    let customIconName: String
 
     var body: some View {
         HStack(spacing: 12) {
@@ -290,7 +309,7 @@ private struct FavoriteDragPreview: View {
                 .font(.system(size: 15, weight: .semibold))
                 .frame(width: 18)
 
-            EntityIconBadge(entity: entity, size: 38)
+            EntityIconBadge(entity: entity, customIconName: customIconName, size: 38)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(entity.friendlyName)
@@ -325,7 +344,7 @@ private struct FavoriteDragPreview: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .frame(width: 520, alignment: .leading)
+        .frame(width: 560, alignment: .leading)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }

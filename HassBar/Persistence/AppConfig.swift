@@ -57,6 +57,20 @@ final class AppConfig {
         }
     }
 
+    var entityIcons: EntityIcons {
+        get {
+            if let raw = defaults.string(forKey: Self.entityIconsKey),
+               let value = EntityIcons(rawValue: raw) {
+                return value
+            }
+            return EntityIcons()
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Self.entityIconsKey)
+        }
+    }
+
+
     var token: String? {
         tokenStore.loadToken(for: Self.tokenAccount)
     }
@@ -82,5 +96,6 @@ final class AppConfig {
     static let urlKey = "ha.baseURL"
     static let favoritesKey = "ha.favorites"
     static let entityAliasesKey = "ha.entityAliases"
+    static let entityIconsKey = "ha.entityIcons"
     static let tokenAccount = "long-lived-access-token"
 }

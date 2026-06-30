@@ -49,4 +49,24 @@ final class FavoritesTests: XCTestCase {
         f.add("c")
         XCTAssertEqual(Favorites(rawValue: f.rawValue)?.entityIDs, ["a", "b", "c"])
     }
+
+    func testEntityIcons() {
+        var icons = EntityIcons()
+        XCTAssertNil(icons.icon(for: "light.living_room"))
+        
+        icons.setIcon("lightbulb", for: "light.living_room")
+        XCTAssertEqual(icons.icon(for: "light.living_room"), "lightbulb")
+        
+        icons.setIcon("  ", for: "light.living_room")
+        XCTAssertNil(icons.icon(for: "light.living_room"))
+    }
+
+    func testEntityIconsRawRepresentable() {
+        let icons = EntityIcons(iconsByEntityID: ["light.living_room": "lightbulb"])
+        let raw = icons.rawValue
+        let decoded = EntityIcons(rawValue: raw)
+        XCTAssertNotNil(decoded)
+        XCTAssertEqual(decoded?.icon(for: "light.living_room"), "lightbulb")
+        XCTAssertNil(EntityIcons(rawValue: "invalid-json"))
+    }
 }

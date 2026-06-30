@@ -46,6 +46,7 @@ final class HomeAssistantStore: HAWebsocketDelegate {
 
     private(set) var favorites: Favorites
     private(set) var entityAliases: EntityAliases
+    private(set) var entityIcons: EntityIcons
     private(set) var realtimeStatus: HARealtimeStatus = .disconnected
 
     private var webSocket: HomeAssistantWebSocket?
@@ -61,6 +62,7 @@ final class HomeAssistantStore: HAWebsocketDelegate {
         self.makeClient = makeClient
         self.favorites = config.favorites
         self.entityAliases = config.entityAliases
+        self.entityIcons = config.entityIcons
         refreshStatus()
     }
 
@@ -90,6 +92,15 @@ final class HomeAssistantStore: HAWebsocketDelegate {
     func setAlias(_ name: String, for entityID: String) {
         entityAliases.setName(name, for: entityID)
         config.entityAliases = entityAliases
+    }
+
+    func customIcon(for entityID: String) -> String {
+        entityIcons.icon(for: entityID) ?? ""
+    }
+
+    func setCustomIcon(_ iconName: String, for entityID: String) {
+        entityIcons.setIcon(iconName, for: entityID)
+        config.entityIcons = entityIcons
     }
 
     // MARK: - Loading
@@ -247,6 +258,7 @@ final class HomeAssistantStore: HAWebsocketDelegate {
     func reloadConfiguration() {
         favorites = config.favorites
         entityAliases = config.entityAliases
+        entityIcons = config.entityIcons
         refreshStatus()
     }
 
