@@ -314,6 +314,11 @@ private struct FavoriteRow: View {
                         Text(EntityMenuStyle.statusText(for: entity))
                             .font(.caption)
                             .foregroundStyle(entity.isAvailable ? Color.secondary : Color.red)
+                        ForEach(compactLightDetails, id: \.self) { detail in
+                            Text(detail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                         if let actionError = store.actionErrors[entity.id] {
                             Text(Self.errorLabel(actionError))
                                 .font(.caption)
@@ -381,6 +386,19 @@ private struct FavoriteRow: View {
 
     private var primaryAction: EntityAction? {
         EntityActionMapping.displayActions(for: entity).first
+    }
+
+    private var compactLightDetails: [String] {
+        guard entity.isLight, entity.isAvailable, entity.state == "on" else { return [] }
+
+        var details: [String] = []
+        if let brightness = entity.brightnessPercent {
+            details.append("\(brightness)%")
+        }
+        if let colorTempKelvin = entity.colorTempKelvin {
+            details.append("\(colorTempKelvin)K")
+        }
+        return details
     }
 
     @ViewBuilder
