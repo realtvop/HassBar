@@ -406,13 +406,13 @@ private struct IconPickerPopover: View {
 
     private let categories: [(name: String, icons: [String])] = [
         ("Common", ["house.fill", "gearshape.fill", "bell.fill", "sparkles", "star.fill"]),
-        ("Lighting", ["lightbulb.fill", "lightbulb.led.fill", "light.outdoor.fill", "light.strip.2.fill"]),
+        ("Lighting", ["lightbulb.fill", "lightbulb.led.fill", "light.panel.fill", "light.strip.2.fill"]),
         ("Power", ["switch.2", "powerplug.fill", "bolt.fill", "bolt.car.fill", "battery.100"]),
         ("Security", ["lock.fill", "lock.open.fill", "door.left.hand.closed", "door.left.hand.open", "shield.fill"]),
-        ("Climate", ["thermometer.medium", "gauge.with.dots.needle.bottom.50percent", "humidity", "wind", "drop.fill"]),
+        ("Climate", ["thermometer.medium", "gauge.with.dots.needle.bottom.50percent", "water.waves", "wind", "drop.fill"]),
         ("Covers", ["blinds.horizontal.closed", "blinds.horizontal.open", "curtains.closed", "curtains.open"]),
         ("Media", ["play.tv.fill", "speaker.wave.3.fill", "tv.fill", "gamecontroller.fill"]),
-        ("Appliances", ["fan.floor", "fan.desk", "kettle.fill", "washer.fill", "dryer.fill"])
+        ("Appliances", ["fan.floor", "fan.desk", "stove.fill", "washer.fill", "dryer.fill"])
     ]
 
     var body: some View {
