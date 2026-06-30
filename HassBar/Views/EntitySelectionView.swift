@@ -77,22 +77,7 @@ struct EntitySelectionView: View {
 
     private var listContent: some View {
         List {
-            if !store.favoriteRows.isEmpty {
-                Section("Favorites") {
-                    ForEach(store.favoriteRows) { entity in
-                        EntityRow(
-                            entity: entity,
-                            alias: aliasBinding(for: entity.id),
-                            isFavorite: true
-                        ) {
-                            store.toggleFavorite(entity.id)
-                        }
-                    }
-                    .onMove { source, destination in
-                        store.moveFavorites(from: source, to: destination)
-                    }
-                }
-            }
+            favoriteSections
 
             Section("All Entities (\(filteredEntities.count))") {
                 if filteredEntities.isEmpty {
@@ -114,6 +99,48 @@ struct EntitySelectionView: View {
         .listStyle(.inset(alternatesRowBackgrounds: false))
         .scrollContentBackground(.hidden)
         .background(.regularMaterial)
+    }
+
+    @ViewBuilder
+    private var favoriteSections: some View {
+        if !favoriteSensorRows.isEmpty {
+            favoriteSection(
+                title: "Favorite Sensors",
+                entities: favoriteSensorRows
+            )
+        }
+
+        if !favoriteDeviceRows.isEmpty {
+            favoriteSection(
+                title: "Favorite Devices",
+                entities: favoriteDeviceRows
+            )
+        }
+    }
+
+    private func favoriteSection(title: String, entities: [HAEntity]) -> some View {
+        Section(title) {
+            ForEach(entities) { entity in
+                EntityRow(
+                    entity: entity,
+                    alias: aliasBinding(for: entity.id),
+                    isFavorite: true
+                ) {
+                    store.toggleFavorite(entity.id)
+                }
+            }
+            .onMove { source, destination in
+                store.moveFavoriteSubset(entities.map(\.id), from: source, to: destination)
+            }
+        }
+    }
+
+    private var favoriteSensorRows: [HAEntity] {
+        store.favoriteRows.filter(Self.isSensor)
+    }
+
+    private var favoriteDeviceRows: [HAEntity] {
+        store.favoriteRows.filter { !Self.isSensor($0) }
     }
 
     private var filteredEntities: [HAEntity] {
@@ -138,6 +165,10 @@ struct EntitySelectionView: View {
             get: { store.alias(for: entityID) },
             set: { store.setAlias($0, for: entityID) }
         )
+    }
+
+    nonisolated private static func isSensor(_ entity: HAEntity) -> Bool {
+        entity.entityID.hasPrefix("sensor.") || entity.entityID.hasPrefix("binary_sensor.")
     }
 }
 

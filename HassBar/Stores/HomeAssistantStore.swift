@@ -230,6 +230,19 @@ final class HomeAssistantStore: HAWebsocketDelegate {
         config.favorites = favorites
     }
 
+    /// Reorder a visible subset of favorites while leaving other favorite groups in place.
+    func moveFavoriteSubset(_ entityIDs: [String], from source: IndexSet, to destination: Int) {
+        var reorderedIDs = entityIDs
+        reorderedIDs.move(fromOffsets: source, toOffset: destination)
+
+        let movedIDSet = Set(entityIDs)
+        var reorderedIterator = reorderedIDs.makeIterator()
+        favorites.entityIDs = favorites.entityIDs.map { id in
+            movedIDSet.contains(id) ? (reorderedIterator.next() ?? id) : id
+        }
+        config.favorites = favorites
+    }
+
     /// Call when settings (URL/token) have changed outside the store.
     func reloadConfiguration() {
         favorites = config.favorites
