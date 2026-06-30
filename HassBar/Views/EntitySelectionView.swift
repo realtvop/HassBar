@@ -213,6 +213,7 @@ private struct EntityRow: View {
     let toggle: () -> Void
 
     @State private var isHovering = false
+    @State private var showIconPicker = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -248,9 +249,28 @@ private struct EntityRow: View {
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 140)
 
-            TextField("Icon", text: $customIcon, prompt: Text("SF Symbol"))
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 110)
+            HStack(spacing: 4) {
+                TextField("Icon", text: $customIcon, prompt: Text("SF Symbol"))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 90)
+
+                Button {
+                    showIconPicker = true
+                } label: {
+                    Image(systemName: "paintpalette")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 22, height: 22)
+                        .background(Color(nsColor: .separatorColor).opacity(0.1))
+                        .cornerRadius(4)
+                }
+                .buttonStyle(.plain)
+                .help("Browse icons")
+                .popover(isPresented: $showIconPicker) {
+                    IconPickerPopover(selection: $customIcon, isPresented: $showIconPicker)
+                }
+            }
+            .frame(width: 116)
 
             if let dragHandle {
                 dragHandle
@@ -373,3 +393,84 @@ private struct FavoriteDropDelegate: DropDelegate {
         return true
     }
 }
+
+// MARK: - Curated Icon Library Picker Popover
+
+private struct IconPickerPopover: View {
+    @Binding var selection: String
+    @Binding var isPresented: Bool
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 28), spacing: 6)
+    ]
+
+    private let categories: [(name: String, icons: [String])] = [
+        ("Common", ["house.fill", "gearshape.fill", "bell.fill", "sparkles", "star.fill"]),
+        ("Lighting", ["lightbulb.fill", "lightbulb.led.fill", "light.outdoor.fill", "light.strip.2.fill"]),
+        ("Power", ["switch.2", "powerplug.fill", "bolt.fill", "bolt.car.fill", "battery.100"]),
+        ("Security", ["lock.fill", "lock.open.fill", "door.left.hand.closed", "door.left.hand.open", "shield.fill"]),
+        ("Climate", ["thermometer.medium", "gauge.with.dots.needle.bottom.50percent", "humidity", "wind", "drop.fill"]),
+        ("Covers", ["blinds.horizontal.closed", "blinds.horizontal.open", "curtains.closed", "curtains.open"]),
+        ("Media", ["play.tv.fill", "speaker.wave.3.fill", "tv.fill", "gamecontroller.fill"]),
+        ("Appliances", ["fan.floor", "fan.desk", "kettle.fill", "washer.fill", "dryer.fill"])
+    ]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Select Icon")
+                    .font(.headline)
+                Spacer()
+                if !selection.isEmpty {
+                    Button("Clear") {
+                        selection = ""
+                        isPresented = false
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 10)
+            .padding(.bottom, 6)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(categories, id: \.name) { category in
+                        let availableIcons = category.icons.filter { NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil }
+                        if !availableIcons.isEmpty {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(category.name)
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(.secondary)
+                                
+                                LazyVGrid(columns: columns, spacing: 6) {
+                                    ForEach(availableIcons, id: \.self) { icon in
+                                        Button {
+                                            selection = icon
+                                            isPresented = false
+                                        } label: {
+                                            Image(systemName: icon)
+                                                .font(.system(size: 13))
+                                                .frame(width: 26, height: 26)
+                                                .background(selection == icon ? Color.accentColor.opacity(0.15) : Color.clear)
+                                                .contentShape(Rectangle())
+                                        }
+                                        .buttonStyle(.plain)
+                                        .cornerRadius(4)
+                                        .help(icon)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(12)
+            }
+        }
+        .frame(width: 220, height: 300)
+    }
+}
+
