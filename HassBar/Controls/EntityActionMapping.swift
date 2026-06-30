@@ -27,6 +27,11 @@ enum EntityActionMapping {
                 .init(id: "turn_off", title: "Turn Off", domain: entity.domain, service: "turn_off"),
                 .init(id: "toggle", title: "Toggle", domain: entity.domain, service: "toggle"),
             ]
+        case .climate:
+            return [
+                .init(id: "turn_on", title: "Turn On", domain: entity.domain, service: "turn_on"),
+                .init(id: "turn_off", title: "Turn Off", domain: entity.domain, service: "turn_off"),
+            ]
         case .cover:
             return [
                 .init(id: "open_cover", title: "Open", domain: entity.domain, service: "open_cover"),
@@ -55,6 +60,11 @@ enum EntityActionMapping {
         switch domain {
         case .switchDomain, .light:
             let on = entity.state == "on"
+            let service = on ? "turn_off" : "turn_on"
+            let title = on ? "Turn Off" : "Turn On"
+            return [.init(id: service, title: title, domain: entity.domain, service: service)]
+        case .climate:
+            let on = entity.state != "off"
             let service = on ? "turn_off" : "turn_on"
             let title = on ? "Turn Off" : "Turn On"
             return [.init(id: service, title: title, domain: entity.domain, service: service)]

@@ -62,6 +62,13 @@ struct HAAttributes: Decodable, Equatable, Sendable {
     var minMireds: Int?
     var maxMireds: Int?
     var supportedColorModes: [String]?
+    var currentTemperature: Double?
+    var targetTemperature: Double?
+    var minTemperature: Double?
+    var maxTemperature: Double?
+    var targetTemperatureStep: Double?
+    var temperatureUnit: String?
+    var hvacModes: [String]?
 
     enum CodingKeys: String, CodingKey {
         case friendlyName = "friendly_name"
@@ -74,6 +81,13 @@ struct HAAttributes: Decodable, Equatable, Sendable {
         case minMireds = "min_mireds"
         case maxMireds = "max_mireds"
         case supportedColorModes = "supported_color_modes"
+        case currentTemperature = "current_temperature"
+        case targetTemperature = "temperature"
+        case minTemperature = "min_temp"
+        case maxTemperature = "max_temp"
+        case targetTemperatureStep = "target_temp_step"
+        case temperatureUnit = "temperature_unit"
+        case hvacModes = "hvac_modes"
     }
 
     init(
@@ -86,7 +100,14 @@ struct HAAttributes: Decodable, Equatable, Sendable {
         maxColorTempKelvin: Int? = nil,
         minMireds: Int? = nil,
         maxMireds: Int? = nil,
-        supportedColorModes: [String]? = nil
+        supportedColorModes: [String]? = nil,
+        currentTemperature: Double? = nil,
+        targetTemperature: Double? = nil,
+        minTemperature: Double? = nil,
+        maxTemperature: Double? = nil,
+        targetTemperatureStep: Double? = nil,
+        temperatureUnit: String? = nil,
+        hvacModes: [String]? = nil
     ) {
         self.friendlyName = friendlyName
         self.unitOfMeasurement = unitOfMeasurement
@@ -98,6 +119,13 @@ struct HAAttributes: Decodable, Equatable, Sendable {
         self.minMireds = minMireds
         self.maxMireds = maxMireds
         self.supportedColorModes = supportedColorModes
+        self.currentTemperature = currentTemperature
+        self.targetTemperature = targetTemperature
+        self.minTemperature = minTemperature
+        self.maxTemperature = maxTemperature
+        self.targetTemperatureStep = targetTemperatureStep
+        self.temperatureUnit = temperatureUnit
+        self.hvacModes = hvacModes
     }
 
     init(from decoder: Decoder) throws {
@@ -112,6 +140,13 @@ struct HAAttributes: Decodable, Equatable, Sendable {
         minMireds = container.decodeLossyIntIfPresent(forKey: .minMireds)
         maxMireds = container.decodeLossyIntIfPresent(forKey: .maxMireds)
         supportedColorModes = try? container.decodeIfPresent([String].self, forKey: .supportedColorModes)
+        currentTemperature = container.decodeLossyDoubleIfPresent(forKey: .currentTemperature)
+        targetTemperature = container.decodeLossyDoubleIfPresent(forKey: .targetTemperature)
+        minTemperature = container.decodeLossyDoubleIfPresent(forKey: .minTemperature)
+        maxTemperature = container.decodeLossyDoubleIfPresent(forKey: .maxTemperature)
+        targetTemperatureStep = container.decodeLossyDoubleIfPresent(forKey: .targetTemperatureStep)
+        temperatureUnit = try? container.decodeIfPresent(String.self, forKey: .temperatureUnit)
+        hvacModes = try? container.decodeIfPresent([String].self, forKey: .hvacModes)
     }
 }
 
@@ -126,6 +161,19 @@ private extension KeyedDecodingContainer where K == HAAttributes.CodingKeys {
         if let value = try? decodeIfPresent(String.self, forKey: key),
            let number = Double(value) {
             return Int(number.rounded())
+        }
+        return nil
+    }
+
+    func decodeLossyDoubleIfPresent(forKey key: K) -> Double? {
+        if let value = try? decodeIfPresent(Double.self, forKey: key) {
+            return value
+        }
+        if let value = try? decodeIfPresent(Int.self, forKey: key) {
+            return Double(value)
+        }
+        if let value = try? decodeIfPresent(String.self, forKey: key) {
+            return Double(value)
         }
         return nil
     }
@@ -234,6 +282,44 @@ struct HAEntity: Decodable, Equatable, Identifiable, Sendable {
         guard mireds > 0 else { return nil }
         return Int((1_000_000.0 / Double(mireds)).rounded())
     }
+
+    // MARK: - Climate helpers
+
+    var isClimate: Bool { domain == "climate" }
+
+    var isClimateActive: Bool {
+        isClimate && isAvailable && state != "off"
+    }
+
+    var climateTemperatureUnit: String {
+        attributes.temperatureUnit ?? attributes.unitOfMeasurement ?? "°"
+    }
+
+    var climateTemperatureStep: Double {
+        if let step = attributes.targetTemperatureStep, step > 0 {
+            return step
+        }
+        return climateTemperatureUnit == "°F" ? 1 : 0.5
+    }
+
+    var climateTemperatureRange: ClosedRange<Double>? {
+        guard let min = attributes.minTemperature, let max = attributes.maxTemperature, min < max else {
+            return nil
+        }
+        return min...max
+    }
+
+    var climateTargetTemperature: Double? {
+        attributes.targetTemperature
+    }
+
+    var climateCurrentTemperature: Double? {
+        attributes.currentTemperature
+    }
+
+    var climateHVACModes: [String] {
+        attributes.hvacModes ?? []
+    }
 }
 
 /// Home Assistant domains HassBar recognizes for filtering and control.
@@ -241,6 +327,7 @@ enum HADomain: String, CaseIterable, Sendable {
     case sensor
     case binarySensor = "binary_sensor"
     case light
+    case climate
     case switchDomain = "switch"
     case cover
     case lock
@@ -250,7 +337,7 @@ enum HADomain: String, CaseIterable, Sendable {
     /// Whether this domain is part of the first-version controllable set.
     var isControllable: Bool {
         switch self {
-        case .light, .switchDomain, .cover, .lock, .scene, .script: return true
+        case .light, .climate, .switchDomain, .cover, .lock, .scene, .script: return true
         case .sensor, .binarySensor: return false
         }
     }

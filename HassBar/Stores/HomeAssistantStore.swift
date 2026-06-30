@@ -193,6 +193,26 @@ final class HomeAssistantStore: HAWebsocketDelegate {
         await callService(domain: "light", service: "turn_on", entityID: entityID, serviceData: ["color_temp_kelvin": kelvin])
     }
 
+    // MARK: - Climate controls
+
+    func setClimateHVACMode(entityID: String, mode: String) async {
+        await callService(
+            domain: "climate",
+            service: "set_hvac_mode",
+            entityID: entityID,
+            serviceData: ["hvac_mode": mode]
+        )
+    }
+
+    func setClimateTemperature(entityID: String, temperature: Double) async {
+        await callService(
+            domain: "climate",
+            service: "set_temperature",
+            entityID: entityID,
+            serviceData: ["temperature": temperature]
+        )
+    }
+
     // MARK: - Favorites
 
     /// Polls the entity state for a short window after a service call,

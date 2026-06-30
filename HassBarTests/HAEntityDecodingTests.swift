@@ -117,6 +117,35 @@ final class HAEntityDecodingTests: XCTestCase {
         XCTAssertEqual(entity.colorTempRange, 2000...6500)
     }
 
+    func testDecodesClimateAttributes() throws {
+        let json = """
+        {
+            "entity_id": "climate.bedroom",
+            "state": "cool",
+            "attributes": {
+                "friendly_name": "Bedroom AC",
+                "current_temperature": "26.5",
+                "temperature": 24,
+                "min_temp": 16,
+                "max_temp": 30,
+                "target_temp_step": "0.5",
+                "temperature_unit": "°C",
+                "hvac_modes": ["off", "cool", "heat", "dry", "fan_only"]
+            }
+        }
+        """.data(using: .utf8)!
+        let entity = try JSONDecoder().decode(HAEntity.self, from: json)
+
+        XCTAssertTrue(entity.isClimate)
+        XCTAssertTrue(entity.isClimateActive)
+        XCTAssertEqual(entity.climateCurrentTemperature, 26.5)
+        XCTAssertEqual(entity.climateTargetTemperature, 24)
+        XCTAssertEqual(entity.climateTemperatureRange, 16...30)
+        XCTAssertEqual(entity.climateTemperatureStep, 0.5)
+        XCTAssertEqual(entity.climateTemperatureUnit, "°C")
+        XCTAssertEqual(entity.climateHVACModes, ["off", "cool", "heat", "dry", "fan_only"])
+    }
+
     func testColorTemperatureRGBComponents() {
         let warm = ColorTemperatureRGB.components(forKelvin: 2000)
         let daylight = ColorTemperatureRGB.components(forKelvin: 6500)

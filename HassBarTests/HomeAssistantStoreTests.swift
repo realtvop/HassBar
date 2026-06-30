@@ -156,6 +156,26 @@ final class HomeAssistantStoreTests: XCTestCase {
         XCTAssertEqual(fake.callInvocations[0].serviceData?["color_temp_kelvin"] as? Int, 3500)
     }
 
+    func testSetClimateHVACModeSendsMode() async {
+        let (store, fake) = configuredStore(fetch: .success([entity("climate.a", "off")]))
+        await store.refresh()
+        await store.setClimateHVACMode(entityID: "climate.a", mode: "cool")
+        XCTAssertEqual(fake.callInvocations.count, 1)
+        XCTAssertEqual(fake.callInvocations[0].domain, "climate")
+        XCTAssertEqual(fake.callInvocations[0].service, "set_hvac_mode")
+        XCTAssertEqual(fake.callInvocations[0].serviceData?["hvac_mode"] as? String, "cool")
+    }
+
+    func testSetClimateTemperatureSendsTemperature() async {
+        let (store, fake) = configuredStore(fetch: .success([entity("climate.a", "cool")]))
+        await store.refresh()
+        await store.setClimateTemperature(entityID: "climate.a", temperature: 24.5)
+        XCTAssertEqual(fake.callInvocations.count, 1)
+        XCTAssertEqual(fake.callInvocations[0].domain, "climate")
+        XCTAssertEqual(fake.callInvocations[0].service, "set_temperature")
+        XCTAssertEqual(fake.callInvocations[0].serviceData?["temperature"] as? Double, 24.5)
+    }
+
     func testCustomIconMethods() {
         let (store, _) = configuredStore()
         XCTAssertEqual(store.customIcon(for: "light.living_room"), "")

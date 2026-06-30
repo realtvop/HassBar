@@ -15,6 +15,7 @@ enum EntityMenuStyle {
         case .sensor: return "gauge.with.dots.needle.bottom.50percent"
         case .binarySensor: return "sensor.tag.radiowaves.forward"
         case .light: return "lightbulb.fill"
+        case .climate: return "air.conditioner.horizontal.fill"
         case .switchDomain: return "switch.2"
         case .cover: return "blinds.horizontal.closed"
         case .lock: return "lock.fill"
@@ -28,6 +29,7 @@ enum EntityMenuStyle {
         if !entity.isAvailable { return .secondary }
         switch HADomain(rawValue: entity.domain) {
         case .light where entity.state == "on": return .yellow
+        case .climate where entity.isClimateActive: return .cyan
         case .switchDomain where entity.state == "on": return .blue
         case .lock where entity.state == "locked": return .green
         case .cover where entity.state == "open": return .blue
@@ -46,6 +48,8 @@ enum EntityMenuStyle {
         switch HADomain(rawValue: entity.domain) {
         case .light, .switchDomain:
             return entity.state == "on"
+        case .climate:
+            return entity.isClimateActive
         case .lock:
             return entity.state == "locked"
         case .cover:

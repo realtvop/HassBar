@@ -35,6 +35,20 @@ final class EntityActionMappingTests: XCTestCase {
         XCTAssertEqual(acts.map(\.service), ["open_cover", "stop_cover"])
     }
 
+    func testClimateDisplayOnShowsTurnOff() {
+        let acts = EntityActionMapping.displayActions(for: entity("climate.living_room", state: "cool"))
+        XCTAssertEqual(acts.count, 1)
+        XCTAssertEqual(acts[0].domain, "climate")
+        XCTAssertEqual(acts[0].service, "turn_off")
+        XCTAssertEqual(acts[0].title, "Turn Off")
+    }
+
+    func testClimateDisplayOffShowsTurnOn() {
+        let acts = EntityActionMapping.displayActions(for: entity("climate.living_room", state: "off"))
+        XCTAssertEqual(acts.count, 1)
+        XCTAssertEqual(acts[0].service, "turn_on")
+    }
+
     func testLockLockedShowsUnlock() {
         let acts = EntityActionMapping.displayActions(for: entity("lock.door", state: "locked"))
         XCTAssertEqual(acts.map(\.service), ["unlock"])

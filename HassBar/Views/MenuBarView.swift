@@ -294,14 +294,14 @@ private struct FavoriteRow: View {
     @State private var isHovering = false
 
     private var canExpand: Bool {
-        entity.isLight && entity.state == "on" && (entity.supportsBrightness || entity.supportsColorTemperature)
+        canExpandLight || canExpandClimate
     }
 
     var body: some View {
         VStack(spacing: 0) {
             mainRow
-            if showsLightControls {
-                LightControlsView(entity: entity, store: store)
+            if showsControls {
+                expandedControls
                     .transition(
                         .asymmetric(
                             insertion: .opacity.combined(with: .move(edge: .top)),
@@ -310,7 +310,7 @@ private struct FavoriteRow: View {
                     )
             }
         }
-        .animation(.hassBarDisclosure, value: showsLightControls)
+        .animation(.hassBarDisclosure, value: showsControls)
         .onChange(of: canExpand) { _, canExpand in
             if !canExpand, isExpanded {
                 collapse()
@@ -331,6 +331,11 @@ private struct FavoriteRow: View {
                             .font(.caption)
                             .foregroundStyle(entity.isAvailable ? Color.secondary : Color.red)
                         ForEach(compactLightDetails, id: \.self) { detail in
+                            Text(detail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        ForEach(compactClimateDetails, id: \.self) { detail in
                             Text(detail)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -404,8 +409,25 @@ private struct FavoriteRow: View {
         EntityActionMapping.displayActions(for: entity).first
     }
 
-    private var showsLightControls: Bool {
+    @ViewBuilder
+    private var expandedControls: some View {
+        if canExpandLight {
+            LightControlsView(entity: entity, store: store)
+        } else if canExpandClimate {
+            ClimateControlsView(entity: entity, store: store)
+        }
+    }
+
+    private var showsControls: Bool {
         isExpanded && canExpand
+    }
+
+    private var canExpandLight: Bool {
+        entity.isLight && entity.state == "on" && (entity.supportsBrightness || entity.supportsColorTemperature)
+    }
+
+    private var canExpandClimate: Bool {
+        entity.isClimate && entity.isAvailable && (!entity.climateHVACModes.isEmpty || entity.climateTemperatureRange != nil)
     }
 
     private var compactLightDetails: [String] {
@@ -419,6 +441,25 @@ private struct FavoriteRow: View {
             details.append("\(colorTempKelvin)K")
         }
         return details
+    }
+
+    private var compactClimateDetails: [String] {
+        guard entity.isClimate, entity.isAvailable, entity.isClimateActive else { return [] }
+
+        var details: [String] = []
+        if let target = entity.climateTargetTemperature {
+            details.append("Set \(temperatureText(target))")
+        }
+        if let current = entity.climateCurrentTemperature {
+            details.append("Now \(temperatureText(current))")
+        }
+        return details
+    }
+
+    private func temperatureText(_ temperature: Double) -> String {
+        let hasFraction = temperature.truncatingRemainder(dividingBy: 1) != 0
+        let number = hasFraction ? String(format: "%.1f", temperature) : String(format: "%.0f", temperature)
+        return "\(number)\(entity.climateTemperatureUnit)"
     }
 
     private static func errorLabel(_ error: HAError) -> String {
