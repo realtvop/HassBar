@@ -124,7 +124,8 @@ struct EntitySelectionView: View {
                 EntityRow(
                     entity: entity,
                     alias: aliasBinding(for: entity.id),
-                    isFavorite: true
+                    isFavorite: true,
+                    reorderActions: reorderActions(for: entity, in: entities)
                 ) {
                     store.toggleFavorite(entity.id)
                 }
@@ -141,6 +142,22 @@ struct EntitySelectionView: View {
 
     private var favoriteDeviceRows: [HAEntity] {
         store.favoriteRows.filter { !Self.isSensor($0) }
+    }
+
+    private func reorderActions(for entity: HAEntity, in entities: [HAEntity]) -> FavoriteReorderActions? {
+        guard let index = entities.firstIndex(where: { $0.id == entity.id }) else { return nil }
+        let ids = entities.map(\.id)
+
+        return FavoriteReorderActions(
+            canMoveUp: index > 0,
+            canMoveDown: index < entities.count - 1,
+            moveUp: {
+                store.moveFavoriteSubset(ids, from: IndexSet(integer: index), to: index - 1)
+            },
+            moveDown: {
+                store.moveFavoriteSubset(ids, from: IndexSet(integer: index), to: index + 2)
+            }
+        )
     }
 
     private var filteredEntities: [HAEntity] {
@@ -178,6 +195,7 @@ private struct EntityRow: View {
     let entity: HAEntity
     @Binding var alias: String
     let isFavorite: Bool
+    var reorderActions: FavoriteReorderActions? = nil
     let toggle: () -> Void
 
     @State private var isHovering = false
@@ -215,6 +233,10 @@ private struct EntityRow: View {
             TextField("Alias", text: $alias, prompt: Text("Alias"))
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 140)
+
+            if let reorderActions {
+                FavoriteReorderButtons(actions: reorderActions)
+            }
         }
         .padding(.vertical, 6)
         .background {
@@ -238,5 +260,39 @@ private struct EntityRow: View {
             Color.clear
                 .frame(width: 18)
         }
+    }
+}
+
+private struct FavoriteReorderActions {
+    let canMoveUp: Bool
+    let canMoveDown: Bool
+    let moveUp: () -> Void
+    let moveDown: () -> Void
+}
+
+private struct FavoriteReorderButtons: View {
+    let actions: FavoriteReorderActions
+
+    var body: some View {
+        HStack(spacing: 2) {
+            Button {
+                actions.moveUp()
+            } label: {
+                Image(systemName: "chevron.up")
+            }
+            .disabled(!actions.canMoveUp)
+            .help("Move Up")
+
+            Button {
+                actions.moveDown()
+            } label: {
+                Image(systemName: "chevron.down")
+            }
+            .disabled(!actions.canMoveDown)
+            .help("Move Down")
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+        .frame(width: 48)
     }
 }
