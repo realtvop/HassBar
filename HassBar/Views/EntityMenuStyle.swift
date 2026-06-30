@@ -28,6 +28,19 @@ enum EntityMenuStyle {
     static func iconTint(for entity: HAEntity) -> Color {
         if !entity.isAvailable { return .secondary }
         switch HADomain(rawValue: entity.domain) {
+        case .light where entity.state == "on": return .white
+        case .climate where entity.isClimateActive: return .white
+        case .switchDomain where entity.state == "on": return .white
+        case .lock where entity.state == "locked": return .white
+        case .cover where entity.state == "open": return .white
+        case .scene, .script: return .purple
+        case .sensor, .binarySensor: return .secondary
+        default: return .secondary
+        }
+    }
+    static func iconBackgroundTint(for entity: HAEntity) -> Color {
+        if !entity.isAvailable { return .secondary }
+        switch HADomain(rawValue: entity.domain) {
         case .light where entity.state == "on": return .yellow
         case .climate where entity.isClimateActive: return .cyan
         case .switchDomain where entity.state == "on": return .blue
@@ -87,7 +100,7 @@ struct EntityIconBadge: View {
 
     private var iconBackground: Color {
         if EntityMenuStyle.isActive(entity) {
-            return EntityMenuStyle.iconTint(for: entity).opacity(0.18)
+            return EntityMenuStyle.iconBackgroundTint(for: entity)
         }
         return Color(nsColor: .separatorColor).opacity(0.45)
     }
