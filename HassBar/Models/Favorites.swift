@@ -73,3 +73,40 @@ extension Favorites: RawRepresentable {
         (try? String(data: JSONEncoder().encode(entityIDs), encoding: .utf8)) ?? "[]"
     }
 }
+
+/// User-defined display aliases keyed by Home Assistant entity id.
+struct EntityAliases: Equatable, Sendable {
+    private(set) var namesByEntityID: [String: String]
+
+    init(namesByEntityID: [String: String] = [:]) {
+        self.namesByEntityID = namesByEntityID.filter { !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    func name(for id: String) -> String? {
+        namesByEntityID[id]
+    }
+
+    mutating func setName(_ name: String, for id: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            namesByEntityID[id] = nil
+        } else {
+            namesByEntityID[id] = trimmed
+        }
+    }
+}
+
+extension EntityAliases: RawRepresentable {
+    /// JSON-encoded alias dictionary, used for `UserDefaults` persistence.
+    public init?(rawValue: String) {
+        guard let data = rawValue.data(using: .utf8),
+              let names = try? JSONDecoder().decode([String: String].self, from: data) else {
+            return nil
+        }
+        self.init(namesByEntityID: names)
+    }
+
+    public var rawValue: String {
+        (try? String(data: JSONEncoder().encode(namesByEntityID), encoding: .utf8)) ?? "{}"
+    }
+}

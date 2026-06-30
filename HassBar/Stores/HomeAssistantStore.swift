@@ -45,6 +45,7 @@ final class HomeAssistantStore: HAWebsocketDelegate {
     private(set) var actionErrors: [String: HAError] = [:]
 
     private(set) var favorites: Favorites
+    private(set) var entityAliases: EntityAliases
     private(set) var realtimeStatus: HARealtimeStatus = .disconnected
 
     private var webSocket: HomeAssistantWebSocket?
@@ -59,6 +60,7 @@ final class HomeAssistantStore: HAWebsocketDelegate {
         self.startRealtimeOnRefresh = startRealtimeOnRefresh
         self.makeClient = makeClient
         self.favorites = config.favorites
+        self.entityAliases = config.entityAliases
         refreshStatus()
     }
 
@@ -75,6 +77,19 @@ final class HomeAssistantStore: HAWebsocketDelegate {
 
     func entity(for id: String) -> HAEntity? {
         entities[id]
+    }
+
+    func displayName(for entity: HAEntity) -> String {
+        entityAliases.name(for: entity.id) ?? entity.friendlyName
+    }
+
+    func alias(for entityID: String) -> String {
+        entityAliases.name(for: entityID) ?? ""
+    }
+
+    func setAlias(_ name: String, for entityID: String) {
+        entityAliases.setName(name, for: entityID)
+        config.entityAliases = entityAliases
     }
 
     // MARK: - Loading
@@ -218,6 +233,7 @@ final class HomeAssistantStore: HAWebsocketDelegate {
     /// Call when settings (URL/token) have changed outside the store.
     func reloadConfiguration() {
         favorites = config.favorites
+        entityAliases = config.entityAliases
         refreshStatus()
     }
 

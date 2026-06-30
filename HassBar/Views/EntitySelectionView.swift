@@ -80,7 +80,12 @@ struct EntitySelectionView: View {
             if !store.favoriteRows.isEmpty {
                 Section("Favorites") {
                     ForEach(store.favoriteRows) { entity in
-                        EntityRow(entity: entity, isFavorite: true) {
+                        EntityRow(
+                            entity: entity,
+                            displayName: store.displayName(for: entity),
+                            alias: aliasBinding(for: entity.id),
+                            isFavorite: true
+                        ) {
                             store.toggleFavorite(entity.id)
                         }
                     }
@@ -98,6 +103,8 @@ struct EntitySelectionView: View {
                     ForEach(filteredEntities) { entity in
                         EntityRow(
                             entity: entity,
+                            displayName: store.displayName(for: entity),
+                            alias: aliasBinding(for: entity.id),
                             isFavorite: store.favorites.contains(entity.id)
                         ) {
                             store.toggleFavorite(entity.id)
@@ -119,12 +126,20 @@ struct EntitySelectionView: View {
             if !searchText.isEmpty {
                 let needle = searchText.lowercased()
                 if !entity.entityID.lowercased().contains(needle),
-                   !entity.friendlyName.lowercased().contains(needle) {
+                   !entity.friendlyName.lowercased().contains(needle),
+                   !store.displayName(for: entity).lowercased().contains(needle) {
                     return false
                 }
             }
             return true
         }
+    }
+
+    private func aliasBinding(for entityID: String) -> Binding<String> {
+        Binding(
+            get: { store.alias(for: entityID) },
+            set: { store.setAlias($0, for: entityID) }
+        )
     }
 }
 
@@ -132,6 +147,8 @@ struct EntitySelectionView: View {
 
 private struct EntityRow: View {
     let entity: HAEntity
+    let displayName: String
+    @Binding var alias: String
     let isFavorite: Bool
     let toggle: () -> Void
 
@@ -139,29 +156,37 @@ private struct EntityRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            favoriteMark
+            HStack(spacing: 12) {
+                favoriteMark
 
-            EntityIconBadge(entity: entity, size: 38)
+                EntityIconBadge(entity: entity, size: 38)
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text(entity.friendlyName)
-                    .font(.system(size: 14, weight: .medium))
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(displayName)
+                        .font(.system(size: 14, weight: .medium))
+                        .lineLimit(1)
 
-                HStack(spacing: 6) {
-                    Text(entity.entityID)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("·")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(entity.state)
-                        .font(.caption)
-                        .foregroundStyle(entity.isAvailable ? Color.secondary : Color.red)
+                    HStack(spacing: 6) {
+                        Text(entity.entityID)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("·")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(entity.state)
+                            .font(.caption)
+                            .foregroundStyle(entity.isAvailable ? Color.secondary : Color.red)
+                    }
                 }
-            }
 
-            Spacer()
+                Spacer()
+            }
+            .contentShape(Rectangle())
+            .onTapGesture(perform: toggle)
+
+            TextField("Alias", text: $alias, prompt: Text("Alias"))
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 140)
         }
         .padding(.vertical, 6)
         .background {
@@ -170,9 +195,7 @@ private struct EntityRow: View {
                     .fill(EntityMenuStyle.hoverBackground)
             }
         }
-        .contentShape(Rectangle())
         .onHover { isHovering = $0 }
-        .onTapGesture(perform: toggle)
     }
 
     @ViewBuilder

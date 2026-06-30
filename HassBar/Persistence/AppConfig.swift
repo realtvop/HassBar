@@ -10,9 +10,9 @@ import Observation
 
 /// Persisted user configuration for HassBar.
 ///
-/// `haURL` and `favorites` live in `UserDefaults`; the access token is kept in
-/// the Keychain via `KeychainTokenStoring`. The class is observable so SwiftUI
-/// views and the store can react to configuration changes.
+/// `haURL`, `favorites`, and `entityAliases` live in `UserDefaults`; the access
+/// token is kept in the Keychain via `KeychainTokenStoring`. The class is
+/// observable so SwiftUI views and the store can react to configuration changes.
 @Observable
 final class AppConfig {
     private let defaults: UserDefaults
@@ -44,6 +44,19 @@ final class AppConfig {
         }
     }
 
+    var entityAliases: EntityAliases {
+        get {
+            if let raw = defaults.string(forKey: Self.entityAliasesKey),
+               let value = EntityAliases(rawValue: raw) {
+                return value
+            }
+            return EntityAliases()
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Self.entityAliasesKey)
+        }
+    }
+
     var token: String? {
         tokenStore.loadToken(for: Self.tokenAccount)
     }
@@ -68,5 +81,6 @@ final class AppConfig {
 
     static let urlKey = "ha.baseURL"
     static let favoritesKey = "ha.favorites"
+    static let entityAliasesKey = "ha.entityAliases"
     static let tokenAccount = "long-lived-access-token"
 }

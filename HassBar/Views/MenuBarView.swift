@@ -160,7 +160,7 @@ struct MenuBarView: View {
             ScrollView {
                 VStack(spacing: 8) {
                     if !sensorRows.isEmpty {
-                        SensorStatusSection(entities: sensorRows)
+                        SensorStatusSection(entities: sensorRows, store: store)
                     }
 
                     if !controlRows.isEmpty {
@@ -233,6 +233,7 @@ struct MenuBarView: View {
 
 private struct SensorStatusSection: View {
     let entities: [HAEntity]
+    let store: HomeAssistantStore
 
     private let columns = [
         GridItem(.flexible(), spacing: 6),
@@ -242,7 +243,7 @@ private struct SensorStatusSection: View {
     var body: some View {
         LazyVGrid(columns: columns, spacing: 6) {
             ForEach(entities) { entity in
-                SensorStatusTile(entity: entity)
+                SensorStatusTile(entity: entity, displayName: store.displayName(for: entity))
             }
         }
         .padding(.horizontal, 12)
@@ -251,13 +252,14 @@ private struct SensorStatusSection: View {
 
 private struct SensorStatusTile: View {
     let entity: HAEntity
+    let displayName: String
 
     var body: some View {
         HStack(spacing: 8) {
             EntityIconBadge(entity: entity, size: 26)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(entity.friendlyName)
+                Text(displayName)
                     .font(.caption)
                     .lineLimit(1)
                 Text(EntityMenuStyle.statusText(for: entity))
@@ -317,7 +319,7 @@ private struct FavoriteRow: View {
 
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(entity.friendlyName)
+                    Text(store.displayName(for: entity))
                         .lineLimit(1)
                     HStack(spacing: 6) {
                         Text(EntityMenuStyle.statusText(for: entity))
