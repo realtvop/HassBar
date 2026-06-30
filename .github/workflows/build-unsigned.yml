@@ -1,0 +1,39 @@
+name: Build Unsigned App
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - '**'
+
+jobs:
+  build:
+    name: Build macOS App (Unsigned)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build macOS App (Unsigned)
+        run: |
+          xcodebuild build \
+            -scheme HassBar \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Compress App
+        run: |
+          cd build/Build/Products/Release
+          zip -r ../../../HassBar-Unsigned.zip HassBar.app
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HassBar-Unsigned
+          path: HassBar-Unsigned.zip
