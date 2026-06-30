@@ -171,8 +171,15 @@ struct MenuBarView: View {
                                     store: store,
                                     isExpanded: expandedEntityID == entity.id,
                                     expand: {
-                                        withAnimation(.easeInOut(duration: 0.15)) {
+                                        withAnimation(.hassBarDisclosure) {
                                             expandedEntityID = (expandedEntityID == entity.id ? nil : entity.id)
+                                        }
+                                    },
+                                    collapse: {
+                                        withAnimation(.hassBarDisclosure) {
+                                            if expandedEntityID == entity.id {
+                                                expandedEntityID = nil
+                                            }
                                         }
                                     }
                                 )
@@ -183,7 +190,7 @@ struct MenuBarView: View {
                 .padding(.vertical, 8)
                 .onChange(of: controlRows.map(\.id)) { _, ids in
                     if let expandedEntityID, !ids.contains(expandedEntityID) {
-                        withAnimation(.easeInOut(duration: 0.15)) {
+                        withAnimation(.hassBarDisclosure) {
                             self.expandedEntityID = nil
                         }
                     }
@@ -275,9 +282,8 @@ private struct FavoriteRow: View {
     let store: HomeAssistantStore
     let isExpanded: Bool
     let expand: () -> Void
+    let collapse: () -> Void
 
-    @State private var brightnessValue: Double = 0
-    @State private var colorTempValue: Double = 0
     @State private var isHovering = false
 
     private var canExpand: Bool {
@@ -287,19 +293,22 @@ private struct FavoriteRow: View {
     var body: some View {
         VStack(spacing: 0) {
             mainRow
-            if isExpanded {
-                lightControls
+            if showsLightControls {
+                LightControlsView(entity: entity, store: store)
+                    .transition(
+                        .asymmetric(
+                            insertion: .opacity.combined(with: .move(edge: .top)),
+                            removal: .opacity.combined(with: .scale(scale: 0.98, anchor: .top))
+                        )
+                    )
             }
         }
-        .onAppear { syncSliderValues() }
-        .onChange(of: entity.id) { syncSliderValues() }
-        .onChange(of: entity.attributes.brightness) { syncBrightness() }
-        .onChange(of: entity.attributes.colorTempKelvin) { syncColorTemperature() }
-        .onChange(of: entity.attributes.colorTempMireds) { syncColorTemperature() }
-        .onChange(of: entity.attributes.minColorTempKelvin) { syncColorTemperature() }
-        .onChange(of: entity.attributes.maxColorTempKelvin) { syncColorTemperature() }
-        .onChange(of: entity.attributes.minMireds) { syncColorTemperature() }
-        .onChange(of: entity.attributes.maxMireds) { syncColorTemperature() }
+        .animation(.hassBarDisclosure, value: showsLightControls)
+        .onChange(of: canExpand) { _, canExpand in
+            if !canExpand, isExpanded {
+                collapse()
+            }
+        }
     }
 
     private var mainRow: some View {
@@ -388,6 +397,10 @@ private struct FavoriteRow: View {
         EntityActionMapping.displayActions(for: entity).first
     }
 
+    private var showsLightControls: Bool {
+        isExpanded && canExpand
+    }
+
     private var compactLightDetails: [String] {
         guard entity.isLight, entity.isAvailable, entity.state == "on" else { return [] }
 
@@ -401,110 +414,6 @@ private struct FavoriteRow: View {
         return details
     }
 
-    @ViewBuilder
-    private var lightControls: some View {
-        VStack(spacing: 4) {
-            if entity.supportsBrightness {
-                brightnessSlider
-            }
-            if entity.supportsColorTemperature, let range = entity.colorTempRange {
-                colorTemperatureSlider(range: range)
-            }
-        }
-        .padding(.leading, 46)
-        .padding(.trailing, 12)
-        .padding(.bottom, 8)
-    }
-
-    private var brightnessSlider: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "sun.max.fill")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(width: 16)
-            GradientSlider(
-                value: $brightnessValue,
-                range: 0...100,
-                step: 1,
-                trackStyle: .valueFill(brightnessColor),
-                onCommit: { value in
-                    await store.setBrightness(entityID: entity.id, percent: Int(value.rounded()))
-                }
-            )
-            Text("\(Int(brightnessValue.rounded()))%")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(width: 32, alignment: .trailing)
-        }
-    }
-
-    private func colorTemperatureSlider(range: ClosedRange<Int>) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "thermometer")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(width: 16)
-            GradientSlider(
-                value: $colorTempValue,
-                range: Double(range.lowerBound)...Double(range.upperBound),
-                step: 100,
-                trackStyle: .fullGradient(colorTemperatureColors(for: range)),
-                onCommit: { value in
-                    await store.setColorTemperature(entityID: entity.id, kelvin: Int(value.rounded()))
-                }
-            )
-            Text("\(Int(colorTempValue))K")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(width: 40, alignment: .trailing)
-        }
-    }
-
-    private var brightnessColor: Color {
-        let kelvin = Int(colorTempValue.rounded())
-        let components = ColorTemperatureRGB.components(forKelvin: kelvin)
-        return Color(red: components.red, green: components.green, blue: components.blue)
-            .opacity(brightnessOpacity)
-    }
-
-    private var brightnessOpacity: Double {
-        min(max(brightnessValue / 100.0, 0), 1)
-    }
-
-    private func colorTemperatureColors(for range: ClosedRange<Int>) -> [Color] {
-        let samples = 8
-        return (0...samples).map { index in
-            let progress = Double(index) / Double(samples)
-            let kelvin = Double(range.lowerBound) + progress * Double(range.upperBound - range.lowerBound)
-            let components = ColorTemperatureRGB.components(forKelvin: Int(kelvin.rounded()))
-            return Color(red: components.red, green: components.green, blue: components.blue)
-        }
-    }
-
-    private func syncSliderValues() {
-        syncBrightness()
-        syncColorTemperature()
-    }
-
-    private func syncBrightness() {
-        brightnessValue = Double(entity.brightnessPercent ?? 100)
-    }
-
-    private func syncColorTemperature() {
-        if let kelvin = entity.colorTempKelvin {
-            colorTempValue = Double(clampedColorTemperature(kelvin))
-        } else if let range = entity.colorTempRange {
-            colorTempValue = Double((range.lowerBound + range.upperBound) / 2)
-        } else {
-            colorTempValue = 4000
-        }
-    }
-
-    private func clampedColorTemperature(_ kelvin: Int) -> Int {
-        guard let range = entity.colorTempRange else { return kelvin }
-        return min(max(kelvin, range.lowerBound), range.upperBound)
-    }
-
     private static func errorLabel(_ error: HAError) -> String {
         switch error {
         case .missingToken: return "No token"
@@ -516,204 +425,8 @@ private struct FavoriteRow: View {
 
 }
 
-private enum GradientSliderTrackStyle {
-    case fullGradient([Color])
-    case valueFill(Color)
-}
-
-private struct GradientSlider: View {
-    @Binding var value: Double
-    @State private var scrollCommitTask: Task<Void, Never>?
-
-    let range: ClosedRange<Double>
-    let step: Double
-    let trackStyle: GradientSliderTrackStyle
-    let onCommit: (Double) async -> Void
-
-    private let thumbSize: CGFloat = 13
-    private let trackHeight: CGFloat = 6
-    private let scrollSensitivity = 0.35
-    private let scrollCommitDelay: Duration = .milliseconds(180)
-
-    var body: some View {
-        GeometryReader { proxy in
-            let width = max(proxy.size.width, thumbSize)
-            let trackWidth = max(width - thumbSize, 1)
-            let progress = normalizedValue
-
-            ZStack(alignment: .leading) {
-                track(progress: progress, trackWidth: trackWidth)
-
-                Circle()
-                    .fill(.background)
-                    .frame(width: thumbSize, height: thumbSize)
-                    .shadow(color: .black.opacity(0.25), radius: 1, x: 0, y: 0.5)
-                    .overlay {
-                        Circle()
-                            .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-                    }
-                    .position(x: thumbSize / 2 + trackWidth * progress, y: proxy.size.height / 2)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(Rectangle())
-            .overlay {
-                SliderEventView { locationX in
-                    updateValue(from: locationX, trackWidth: trackWidth)
-                } onScroll: { delta in
-                    updateValue(byScrollDelta: delta)
-                    scheduleScrollCommit()
-                } onCommit: {
-                    scrollCommitTask?.cancel()
-                    commitCurrentValue()
-                }
-            }
-        }
-        .frame(height: 18)
-        .accessibilityElement()
-        .accessibilityValue("\(Int(value))")
-        .onDisappear {
-            scrollCommitTask?.cancel()
-        }
-    }
-
-    private var normalizedValue: CGFloat {
-        guard range.upperBound > range.lowerBound else { return 0 }
-        let clamped = min(max(value, range.lowerBound), range.upperBound)
-        return CGFloat((clamped - range.lowerBound) / (range.upperBound - range.lowerBound))
-    }
-
-    @ViewBuilder
-    private func track(progress: CGFloat, trackWidth: CGFloat) -> some View {
-        ZStack(alignment: .leading) {
-            switch trackStyle {
-            case .fullGradient(let colors):
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: colors,
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .frame(width: trackWidth, height: trackHeight)
-                    .padding(.leading, thumbSize / 2)
-            case .valueFill(let color):
-                Capsule()
-                    .fill(color)
-                    .frame(width: max(trackWidth * progress, 0), height: trackHeight)
-                    .padding(.leading, thumbSize / 2)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-    }
-
-    private func updateValue(from locationX: CGFloat, trackWidth: CGFloat) {
-        let clampedX = min(max(locationX - thumbSize / 2, 0), trackWidth)
-        if clampedX <= 0 {
-            value = range.lowerBound
-            return
-        }
-        if clampedX >= trackWidth {
-            value = range.upperBound
-            return
-        }
-
-        let rawValue = range.lowerBound + Double(clampedX / trackWidth) * (range.upperBound - range.lowerBound)
-        let steppedValue = range.lowerBound + ((rawValue - range.lowerBound) / step).rounded() * step
-        value = min(max(steppedValue, range.lowerBound), range.upperBound)
-    }
-
-    private func updateValue(byScrollDelta delta: CGFloat) {
-        guard delta != 0, range.upperBound > range.lowerBound else { return }
-
-        let valueRange = range.upperBound - range.lowerBound
-        let scrollStep = max(step, valueRange / 100)
-        let rawValue = value + Double(delta) * scrollStep * scrollSensitivity
-        let steppedValue = range.lowerBound + ((rawValue - range.lowerBound) / step).rounded() * step
-        value = min(max(steppedValue, range.lowerBound), range.upperBound)
-    }
-
-    private func scheduleScrollCommit() {
-        scrollCommitTask?.cancel()
-        let committedValue = value
-        scrollCommitTask = Task {
-            try? await Task.sleep(for: scrollCommitDelay)
-            guard !Task.isCancelled else { return }
-            await onCommit(committedValue)
-        }
-    }
-
-    private func commitCurrentValue() {
-        let committedValue = value
-        Task {
-            await onCommit(committedValue)
-        }
-    }
-}
-
-private struct SliderEventView: NSViewRepresentable {
-    let onDrag: (CGFloat) -> Void
-    let onScroll: (CGFloat) -> Void
-    let onCommit: () -> Void
-
-    func makeNSView(context: Context) -> SliderEventCatcherView {
-        let view = SliderEventCatcherView()
-        view.onDrag = onDrag
-        view.onScroll = onScroll
-        view.onCommit = onCommit
-        return view
-    }
-
-    func updateNSView(_ nsView: SliderEventCatcherView, context: Context) {
-        nsView.onDrag = onDrag
-        nsView.onScroll = onScroll
-        nsView.onCommit = onCommit
-    }
-
-    final class SliderEventCatcherView: NSView {
-        var onDrag: ((CGFloat) -> Void)?
-        var onScroll: ((CGFloat) -> Void)?
-        var onCommit: (() -> Void)?
-
-        override var acceptsFirstResponder: Bool { true }
-
-        override func mouseDown(with event: NSEvent) {
-            handleDrag(event)
-        }
-
-        override func mouseDragged(with event: NSEvent) {
-            handleDrag(event)
-        }
-
-        override func mouseUp(with event: NSEvent) {
-            handleDrag(event)
-            onCommit?()
-        }
-
-        override func scrollWheel(with event: NSEvent) {
-            guard event.hasPreciseScrollingDeltas else {
-                super.scrollWheel(with: event)
-                return
-            }
-            guard event.momentumPhase == [] else { return }
-
-            let horizontalDelta = event.scrollingDeltaX
-            guard abs(horizontalDelta) > abs(event.scrollingDeltaY), horizontalDelta != 0 else {
-                super.scrollWheel(with: event)
-                return
-            }
-
-            let directionMultiplier: CGFloat = event.isDirectionInvertedFromDevice ? 1 : -1
-            onScroll?(horizontalDelta * directionMultiplier)
-
-            if event.phase == .ended || event.momentumPhase == .ended {
-                onCommit?()
-            }
-        }
-
-        private func handleDrag(_ event: NSEvent) {
-            let location = convert(event.locationInWindow, from: nil)
-            onDrag?(location.x)
-        }
+private extension Animation {
+    static var hassBarDisclosure: Animation {
+        .interpolatingSpring(mass: 0.7, stiffness: 280, damping: 28, initialVelocity: 0)
     }
 }
