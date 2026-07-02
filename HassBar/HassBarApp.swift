@@ -34,8 +34,13 @@ private struct MenuBarStatusLabel: View {
         if rows.isEmpty {
             Label("HassBar", systemImage: "house.fill")
         } else if store.showsAppIconInMenuBar {
-            HStack(spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
                 Image(systemName: "house.fill")
+                    .font(.body)
+                    .alignmentGuide(.firstTextBaseline) { dimensions in
+                        dimensions[VerticalAlignment.bottom]
+                    }
+                Text(Self.narrowSpace)
                 menuBarText(for: rows)
             }
             .lineLimit(1)
@@ -49,7 +54,7 @@ private struct MenuBarStatusLabel: View {
 
     private func menuBarText(for rows: [MenuBarSensorRow]) -> Text {
         rows.enumerated().reduce(Text("")) { partial, item in
-            let separator = item.offset == 0 ? Text("") : Text(" · ")
+            let separator = item.offset == 0 ? Text("") : Text(Self.narrowSpace)
             return partial + separator + menuBarText(for: item.element)
         }
     }
@@ -58,11 +63,13 @@ private struct MenuBarStatusLabel: View {
         let status = Text(EntityMenuStyle.statusText(for: row.entity))
 
         if row.item.showsIcon {
-            return Text(Image(systemName: iconName(for: row))) + Text(" ") + status
+            return Text(Image(systemName: iconName(for: row))) + Text(Self.narrowSpace) + status
         }
 
         return status
     }
+
+    private static let narrowSpace = "\u{202F}"
 
     private func iconName(for row: MenuBarSensorRow) -> String {
         if !row.item.iconName.isEmpty,
