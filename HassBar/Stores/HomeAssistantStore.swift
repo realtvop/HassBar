@@ -18,6 +18,13 @@ enum HAConnectionStatus: Equatable, Sendable {
     case error(HAError)
 }
 
+struct MenuBarSensorRow: Identifiable, Equatable {
+    let item: MenuBarSensorItem
+    let entity: HAEntity
+
+    var id: String { item.entityID }
+}
+
 /// Observable application state bridging `HomeAssistantClient` and SwiftUI views.
 @MainActor
 @Observable
@@ -47,6 +54,7 @@ final class HomeAssistantStore: HAWebsocketDelegate {
     private(set) var favorites: Favorites
     private(set) var entityAliases: EntityAliases
     private(set) var entityIcons: EntityIcons
+    private(set) var menuBarSensors: MenuBarSensors
     private(set) var realtimeStatus: HARealtimeStatus = .disconnected
 
     private var webSocket: HomeAssistantWebSocket?
@@ -63,6 +71,7 @@ final class HomeAssistantStore: HAWebsocketDelegate {
         self.favorites = config.favorites
         self.entityAliases = config.entityAliases
         self.entityIcons = config.entityIcons
+        self.menuBarSensors = config.menuBarSensors
         refreshStatus()
     }
 
@@ -70,6 +79,17 @@ final class HomeAssistantStore: HAWebsocketDelegate {
 
     var favoriteRows: [HAEntity] {
         favorites.entityIDs.compactMap { entities[$0] }
+    }
+
+    var menuBarSensorRows: [MenuBarSensorRow] {
+        menuBarSensors.items.compactMap { item in
+            guard let entity = entities[item.entityID] else { return nil }
+            return MenuBarSensorRow(item: item, entity: entity)
+        }
+    }
+
+    var sensorEntitiesSorted: [HAEntity] {
+        allEntitiesSorted.filter(Self.isSensor)
     }
 
     /// Entities sorted by entity_id for the selection window.
@@ -101,6 +121,40 @@ final class HomeAssistantStore: HAWebsocketDelegate {
     func setCustomIcon(_ iconName: String, for entityID: String) {
         entityIcons.setIcon(iconName, for: entityID)
         config.entityIcons = entityIcons
+    }
+
+    func addMenuBarSensor(_ entityID: String) {
+        menuBarSensors.add(entityID)
+        config.menuBarSensors = menuBarSensors
+    }
+
+    func removeMenuBarSensor(_ entityID: String) {
+        menuBarSensors.remove(entityID)
+        config.menuBarSensors = menuBarSensors
+    }
+
+    func menuBarSensorItem(for entityID: String) -> MenuBarSensorItem? {
+        menuBarSensors.item(for: entityID)
+    }
+
+    func setMenuBarSensorIconName(_ iconName: String, for entityID: String) {
+        menuBarSensors.setIconName(iconName, for: entityID)
+        config.menuBarSensors = menuBarSensors
+    }
+
+    func setMenuBarSensorShowsIcon(_ showsIcon: Bool, for entityID: String) {
+        menuBarSensors.setShowsIcon(showsIcon, for: entityID)
+        config.menuBarSensors = menuBarSensors
+    }
+
+    func moveMenuBarSensor(_ entityID: String, to index: Int) {
+        menuBarSensors.move(entityID, to: index)
+        config.menuBarSensors = menuBarSensors
+    }
+
+    func moveMenuBarSensorsSubset(_ entityIDs: [String], from source: IndexSet, to destination: Int) {
+        menuBarSensors.moveSubset(entityIDs, from: source, to: destination)
+        config.menuBarSensors = menuBarSensors
     }
 
     // MARK: - Loading
@@ -279,6 +333,7 @@ final class HomeAssistantStore: HAWebsocketDelegate {
         favorites = config.favorites
         entityAliases = config.entityAliases
         entityIcons = config.entityIcons
+        menuBarSensors = config.menuBarSensors
         refreshStatus()
     }
 
@@ -290,6 +345,10 @@ final class HomeAssistantStore: HAWebsocketDelegate {
         } else {
             status = .unconfigured
         }
+    }
+
+    private static func isSensor(_ entity: HAEntity) -> Bool {
+        entity.domain == HADomain.sensor.rawValue || entity.domain == HADomain.binarySensor.rawValue
     }
 
     // MARK: - WebSocket

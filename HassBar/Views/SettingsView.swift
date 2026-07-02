@@ -10,6 +10,7 @@ import SwiftUI
 enum SettingsTab: Hashable {
     case connection
     case entities
+    case menuBar
 }
 
 struct SettingsView: View {
@@ -25,6 +26,10 @@ struct SettingsView: View {
             EntitySelectionView(store: store)
                 .tabItem { Label("Entities", systemImage: "star") }
                 .tag(SettingsTab.entities)
+
+            MenuBarSensorSettingsView(store: store)
+                .tabItem { Label("Menu Bar", systemImage: "menubar.rectangle") }
+                .tag(SettingsTab.menuBar)
         }
         .frame(minWidth: 600, minHeight: 460)
     }

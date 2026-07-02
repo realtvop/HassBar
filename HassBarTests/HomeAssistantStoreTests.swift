@@ -184,4 +184,54 @@ final class HomeAssistantStoreTests: XCTestCase {
         XCTAssertEqual(store.customIcon(for: "light.living_room"), "sparkles")
         XCTAssertEqual(store.config.entityIcons.icon(for: "light.living_room"), "sparkles")
     }
+
+    func testMenuBarSensorRowsRespectOrderingAndMissing() async {
+        let (store, _) = configuredStore(fetch: .success([
+            entity("sensor.temperature", "22"),
+            entity("binary_sensor.motion", "off"),
+            entity("light.a", "on")
+        ]))
+        store.config.menuBarSensors = MenuBarSensors(items: [
+            MenuBarSensorItem(entityID: "binary_sensor.motion", iconName: "figure.walk", showsIcon: false),
+            MenuBarSensorItem(entityID: "missing.id"),
+            MenuBarSensorItem(entityID: "sensor.temperature", iconName: "thermometer.medium", showsIcon: true)
+        ])
+        store.reloadConfiguration()
+
+        await store.refresh()
+
+        XCTAssertEqual(store.menuBarSensorRows.map(\.id), ["binary_sensor.motion", "sensor.temperature"])
+        XCTAssertEqual(store.menuBarSensorRows.first?.item.showsIcon, false)
+        XCTAssertEqual(store.menuBarSensorRows.last?.item.iconName, "thermometer.medium")
+    }
+
+    func testMenuBarSensorMethodsWriteBack() {
+        let (store, _) = configuredStore()
+
+        store.addMenuBarSensor("sensor.temperature")
+        store.setMenuBarSensorIconName("thermometer.medium", for: "sensor.temperature")
+        store.setMenuBarSensorShowsIcon(false, for: "sensor.temperature")
+
+        XCTAssertEqual(store.menuBarSensors.items.map(\.entityID), ["sensor.temperature"])
+        XCTAssertEqual(store.config.menuBarSensors.item(for: "sensor.temperature")?.iconName, "thermometer.medium")
+        XCTAssertEqual(store.config.menuBarSensors.item(for: "sensor.temperature")?.showsIcon, false)
+
+        store.removeMenuBarSensor("sensor.temperature")
+        XCTAssertTrue(store.config.menuBarSensors.items.isEmpty)
+    }
+
+    func testMenuBarSensorMoveWritesBack() {
+        let (store, _) = configuredStore()
+        store.config.menuBarSensors = MenuBarSensors(items: [
+            MenuBarSensorItem(entityID: "sensor.a"),
+            MenuBarSensorItem(entityID: "sensor.b"),
+            MenuBarSensorItem(entityID: "sensor.c")
+        ])
+        store.reloadConfiguration()
+
+        store.moveMenuBarSensor("sensor.c", to: 0)
+
+        XCTAssertEqual(store.menuBarSensors.items.map(\.entityID), ["sensor.c", "sensor.a", "sensor.b"])
+        XCTAssertEqual(store.config.menuBarSensors.items.map(\.entityID), ["sensor.c", "sensor.a", "sensor.b"])
+    }
 }

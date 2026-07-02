@@ -396,7 +396,7 @@ private struct FavoriteDropDelegate: DropDelegate {
 
 // MARK: - Curated Icon Library Picker Popover
 
-private struct IconPickerPopover: View {
+struct IconPickerPopover: View {
     @Binding var selection: String
     @Binding var isPresented: Bool
 
@@ -473,4 +473,3 @@ private struct IconPickerPopover: View {
         .frame(width: 220, height: 300)
     }
 }
-

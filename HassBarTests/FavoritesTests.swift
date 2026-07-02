@@ -69,4 +69,56 @@ final class FavoritesTests: XCTestCase {
         XCTAssertEqual(decoded?.icon(for: "light.living_room"), "lightbulb")
         XCTAssertNil(EntityIcons(rawValue: "invalid-json"))
     }
+
+    func testMenuBarSensorsAddRemoveAndNoDuplicates() {
+        var sensors = MenuBarSensors()
+        sensors.add("sensor.temperature")
+        sensors.add("binary_sensor.motion")
+        sensors.add("sensor.temperature")
+
+        XCTAssertEqual(sensors.items.map(\.entityID), ["sensor.temperature", "binary_sensor.motion"])
+
+        sensors.remove("sensor.temperature")
+        XCTAssertEqual(sensors.items.map(\.entityID), ["binary_sensor.motion"])
+    }
+
+    func testMenuBarSensorsIconSettingsTrimAndToggle() {
+        var sensors = MenuBarSensors()
+        sensors.add("sensor.temperature")
+
+        sensors.setIconName("  thermometer.medium  ", for: "sensor.temperature")
+        sensors.setShowsIcon(false, for: "sensor.temperature")
+
+        XCTAssertEqual(sensors.item(for: "sensor.temperature")?.iconName, "thermometer.medium")
+        XCTAssertEqual(sensors.item(for: "sensor.temperature")?.showsIcon, false)
+    }
+
+    func testMenuBarSensorsMove() {
+        var sensors = MenuBarSensors(items: [
+            MenuBarSensorItem(entityID: "sensor.a"),
+            MenuBarSensorItem(entityID: "sensor.b"),
+            MenuBarSensorItem(entityID: "sensor.c")
+        ])
+
+        sensors.move("sensor.c", to: 0)
+
+        XCTAssertEqual(sensors.items.map(\.entityID), ["sensor.c", "sensor.a", "sensor.b"])
+    }
+
+    func testMenuBarSensorsRawRepresentable() {
+        let sensors = MenuBarSensors(items: [
+            MenuBarSensorItem(entityID: "sensor.temperature", iconName: "  thermometer.medium  ", showsIcon: true),
+            MenuBarSensorItem(entityID: "binary_sensor.motion", iconName: "figure.walk", showsIcon: false)
+        ])
+
+        let raw = sensors.rawValue
+        let decoded = MenuBarSensors(rawValue: raw)
+
+        XCTAssertNotNil(decoded)
+        XCTAssertEqual(decoded?.items, [
+            MenuBarSensorItem(entityID: "sensor.temperature", iconName: "thermometer.medium", showsIcon: true),
+            MenuBarSensorItem(entityID: "binary_sensor.motion", iconName: "figure.walk", showsIcon: false)
+        ])
+        XCTAssertNil(MenuBarSensors(rawValue: "not-json"))
+    }
 }

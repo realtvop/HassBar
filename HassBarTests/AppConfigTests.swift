@@ -57,4 +57,17 @@ final class AppConfigTests: XCTestCase {
         
         XCTAssertEqual(config.entityIcons.icon(for: "switch.party"), "sparkles")
     }
+
+    func testMenuBarSensorsRoundTrip() {
+        let config = TestSupport.makeConfig()
+        XCTAssertEqual(config.menuBarSensors.items, [])
+
+        let sensors = MenuBarSensors(items: [
+            MenuBarSensorItem(entityID: "sensor.temperature", iconName: "thermometer.medium", showsIcon: true),
+            MenuBarSensorItem(entityID: "binary_sensor.motion", iconName: "", showsIcon: false)
+        ])
+        config.menuBarSensors = sensors
+
+        XCTAssertEqual(config.menuBarSensors, sensors)
+    }
 }

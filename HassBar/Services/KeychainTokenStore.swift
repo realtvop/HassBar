@@ -10,7 +10,7 @@ import Security
 
 /// Boundary for persisting the Home Assistant Long-Lived Access Token.
 /// Isolated behind a protocol so store logic can use an in-memory fake in tests.
-protocol KeychainTokenStoring: Sendable {
+nonisolated protocol KeychainTokenStoring: Sendable {
     func saveToken(_ token: String, for account: String) throws
     func loadToken(for account: String) -> String?
     func deleteToken(for account: String) throws
@@ -21,7 +21,7 @@ enum KeychainError: Error, Equatable {
 }
 
 /// Keychain-backed implementation of `KeychainTokenStoring`.
-struct KeychainTokenStore: KeychainTokenStoring {
+nonisolated struct KeychainTokenStore: KeychainTokenStoring {
     let service: String
 
     init(service: String = "github.realtvop.HassBar") {

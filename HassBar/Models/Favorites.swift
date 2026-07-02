@@ -12,7 +12,7 @@ import SwiftUI
 ///
 /// Favorites are stored as a stable ordered list of entity ids so the menu
 /// can present them in a deterministic order independent of the entity cache.
-struct Favorites: Equatable, Sendable {
+nonisolated struct Favorites: Equatable, Sendable {
     var entityIDs: [String]
 
     init(entityIDs: [String] = []) {
@@ -59,7 +59,7 @@ struct Favorites: Equatable, Sendable {
     }
 }
 
-extension Favorites: RawRepresentable {
+nonisolated extension Favorites: RawRepresentable {
     /// JSON-encoded `entityIDs` array, used for `UserDefaults` persistence.
     public init?(rawValue: String) {
         guard let data = rawValue.data(using: .utf8),
@@ -75,7 +75,7 @@ extension Favorites: RawRepresentable {
 }
 
 /// User-defined display aliases keyed by Home Assistant entity id.
-struct EntityAliases: Equatable, Sendable {
+nonisolated struct EntityAliases: Equatable, Sendable {
     private(set) var namesByEntityID: [String: String]
 
     init(namesByEntityID: [String: String] = [:]) {
@@ -96,7 +96,7 @@ struct EntityAliases: Equatable, Sendable {
     }
 }
 
-extension EntityAliases: RawRepresentable {
+nonisolated extension EntityAliases: RawRepresentable {
     /// JSON-encoded alias dictionary, used for `UserDefaults` persistence.
     public init?(rawValue: String) {
         guard let data = rawValue.data(using: .utf8),
@@ -112,7 +112,7 @@ extension EntityAliases: RawRepresentable {
 }
 
 /// User-defined display icons keyed by Home Assistant entity id.
-struct EntityIcons: Equatable, Sendable {
+nonisolated struct EntityIcons: Equatable, Sendable {
     private(set) var iconsByEntityID: [String: String]
 
     init(iconsByEntityID: [String: String] = [:]) {
@@ -133,7 +133,102 @@ struct EntityIcons: Equatable, Sendable {
     }
 }
 
-extension EntityIcons: RawRepresentable {
+/// Ordered sensors to show directly in the macOS menu bar status item.
+nonisolated struct MenuBarSensorItem: Codable, Equatable, Identifiable, Sendable {
+    var entityID: String
+    var iconName: String
+    var showsIcon: Bool
+
+    var id: String { entityID }
+
+    init(entityID: String, iconName: String = "", showsIcon: Bool = true) {
+        self.entityID = entityID
+        self.iconName = iconName.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.showsIcon = showsIcon
+    }
+}
+
+nonisolated struct MenuBarSensors: Equatable, Sendable {
+    private(set) var items: [MenuBarSensorItem]
+
+    init(items: [MenuBarSensorItem] = []) {
+        var seen: Set<String> = []
+        self.items = items.compactMap { item in
+            guard !item.entityID.isEmpty, !seen.contains(item.entityID) else { return nil }
+            seen.insert(item.entityID)
+            return MenuBarSensorItem(
+                entityID: item.entityID,
+                iconName: item.iconName,
+                showsIcon: item.showsIcon
+            )
+        }
+    }
+
+    func contains(_ id: String) -> Bool {
+        items.contains { $0.entityID == id }
+    }
+
+    func item(for id: String) -> MenuBarSensorItem? {
+        items.first { $0.entityID == id }
+    }
+
+    mutating func add(_ id: String) {
+        guard !contains(id) else { return }
+        items.append(MenuBarSensorItem(entityID: id))
+    }
+
+    mutating func remove(_ id: String) {
+        items.removeAll { $0.entityID == id }
+    }
+
+    mutating func setIconName(_ iconName: String, for id: String) {
+        guard let index = items.firstIndex(where: { $0.entityID == id }) else { return }
+        items[index].iconName = iconName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    mutating func setShowsIcon(_ showsIcon: Bool, for id: String) {
+        guard let index = items.firstIndex(where: { $0.entityID == id }) else { return }
+        items[index].showsIcon = showsIcon
+    }
+
+    mutating func move(_ id: String, to destination: Int) {
+        guard let from = items.firstIndex(where: { $0.entityID == id }) else { return }
+        items.move(fromOffsets: IndexSet(integer: from), toOffset: destination)
+    }
+
+    mutating func moveSubset(_ entityIDs: [String], from source: IndexSet, to destination: Int) {
+        var reorderedIDs = entityIDs
+        reorderedIDs.move(fromOffsets: source, toOffset: destination)
+
+        let movedIDSet = Set(entityIDs)
+        let itemsByID = Dictionary(uniqueKeysWithValues: items.map { ($0.entityID, $0) })
+        var reorderedIterator = reorderedIDs.makeIterator()
+        items = items.map { item in
+            guard movedIDSet.contains(item.entityID), let nextID = reorderedIterator.next(),
+                  let replacement = itemsByID[nextID] else {
+                return item
+            }
+            return replacement
+        }
+    }
+}
+
+nonisolated extension MenuBarSensors: RawRepresentable {
+    /// JSON-encoded ordered sensor item array, used for `UserDefaults` persistence.
+    public init?(rawValue: String) {
+        guard let data = rawValue.data(using: .utf8),
+              let items = try? JSONDecoder().decode([MenuBarSensorItem].self, from: data) else {
+            return nil
+        }
+        self.init(items: items)
+    }
+
+    public var rawValue: String {
+        (try? String(data: JSONEncoder().encode(items), encoding: .utf8)) ?? "[]"
+    }
+}
+
+nonisolated extension EntityIcons: RawRepresentable {
     /// JSON-encoded icon dictionary, used for `UserDefaults` persistence.
     public init?(rawValue: String) {
         guard let data = rawValue.data(using: .utf8),
@@ -147,4 +242,3 @@ extension EntityIcons: RawRepresentable {
         (try? String(data: JSONEncoder().encode(iconsByEntityID), encoding: .utf8)) ?? "{}"
     }
 }
-
