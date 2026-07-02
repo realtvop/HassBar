@@ -33,50 +33,59 @@ private struct MenuBarStatusLabel: View {
         Group {
             let rows = store.menuBarSensorRows
             if rows.isEmpty {
-                Label("HassBar", systemImage: "house.fill")
-            } else if store.showsAppIconInMenuBar {
-                Label {
-                    menuBarText(for: rows)
-                } icon: {
-                    Image(systemName: "house.fill")
+                HStack(alignment: .center, spacing: Self.itemSpacing) {
+                    statusIcon(named: "house.fill")
+                    Text("HassBar")
                 }
-                .labelStyle(.titleAndIcon)
-                .lineLimit(1)
-                .frame(maxWidth: 260, alignment: .leading)
             } else {
-                menuBarText(for: rows)
-                .lineLimit(1)
-                .frame(maxWidth: 260, alignment: .leading)
+                HStack(alignment: .center, spacing: Self.itemSpacing) {
+                    if store.showsAppIconInMenuBar {
+                        statusIcon(named: "house.fill")
+                    }
+                    ForEach(rows) { row in
+                        sensorSegment(for: row)
+                    }
+                }
             }
         }
+        .font(Self.labelFont)
+        .lineLimit(1)
+        .frame(maxWidth: 260, alignment: .leading)
         .task {
             await store.refreshIfConfigured()
         }
     }
 
-    private func menuBarText(for rows: [MenuBarSensorRow]) -> Text {
-        rows.enumerated().reduce(Text("")) { partial, item in
-            let separator = item.offset == 0 ? Text(" ") : Text("  ")
-            return partial + separator + menuBarText(for: item.element)
+    private func sensorSegment(for row: MenuBarSensorRow) -> some View {
+        HStack(alignment: .center, spacing: Self.itemSpacing) {
+            if row.item.showsIcon {
+                statusIcon(named: iconName(for: row))
+            }
+            Text(EntityMenuStyle.statusText(for: row.entity))
         }
+        .lineLimit(1)
+        .opacity(row.entity.isAvailable ? 1 : 0.62)
     }
 
-    private func menuBarText(for row: MenuBarSensorRow) -> Text {
-        let status = Text(EntityMenuStyle.statusText(for: row.entity))
-
-        if row.item.showsIcon {
-            return Text(Image(systemName: iconName(for: row))) + Text(Self.narrowSpace) + status
-        }
-
-        return status
+    private func statusIcon(named iconName: String) -> some View {
+        Image(systemName: iconName)
+            .font(Self.iconFont)
+            .frame(width: Self.iconFrame, height: Self.iconFrame, alignment: .center)
+            .offset(y: Self.iconVerticalOffset)
     }
 
-    private static let narrowSpace = "\u{202F}"
+    private static let labelFont = Font.system(size: 12, weight: .regular)
+    private static let iconFont = Font.system(size: 11, weight: .regular)
+    private static let iconFrame: CGFloat = 12
+    private static let iconVerticalOffset: CGFloat = -0.75
+    private static let itemSpacing: CGFloat = 3
 
     private func iconName(for row: MenuBarSensorRow) -> String {
-        if !row.item.iconName.isEmpty,
-           NSImage(systemSymbolName: row.item.iconName, accessibilityDescription: nil) != nil {
-            return row.item.iconName
+        if row.item.showsIcon {
+            if !row.item.iconName.isEmpty,
+               NSImage(systemSymbolName: row.item.iconName, accessibilityDescription: nil) != nil {
+                return row.item.iconName
+            }
         }
         return EntityMenuStyle.systemImage(for: row.entity.domain)
     }
