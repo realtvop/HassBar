@@ -66,7 +66,7 @@ private struct MenuBarStatusLabel: View {
 
     private func menuBarText(for rows: [MenuBarSensorRow]) -> Text {
         rows.enumerated().reduce(Text("")) { partial, item in
-            let separator = item.offset == 0 ? Text("") : Self.separatorText
+            let separator = item.offset == 0 ? Text(" ") : Self.separatorText
             return partial + separator + menuBarText(for: item.element)
         }
     }
@@ -99,7 +99,7 @@ private struct MenuBarStatusLabel: View {
     private static let iconTextFont = Font.system(size: 10, weight: .regular)
     private static let iconVerticalOffset: CGFloat = -0.75
     private static let iconBaselineOffset: CGFloat = 1.25
-    private static let separatorText = Text("\u{202F}")
+    private static let separatorText = Text("  ")
 
     private func iconName(for row: MenuBarSensorRow) -> String {
         if row.item.showsIcon {
