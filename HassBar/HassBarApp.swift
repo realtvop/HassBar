@@ -30,25 +30,27 @@ private struct MenuBarStatusLabel: View {
     let store: HomeAssistantStore
 
     var body: some View {
-        let rows = store.menuBarSensorRows
-        if rows.isEmpty {
-            Label("HassBar", systemImage: "house.fill")
-        } else if store.showsAppIconInMenuBar {
-            HStack(alignment: .firstTextBaseline, spacing: 0) {
-                Image(systemName: "house.fill")
-                    .font(.body)
-                    .alignmentGuide(.firstTextBaseline) { dimensions in
-                        dimensions[VerticalAlignment.bottom]
-                    }
-                Text(Self.narrowSpace)
+        Group {
+            let rows = store.menuBarSensorRows
+            if rows.isEmpty {
+                Label("HassBar", systemImage: "house.fill")
+            } else if store.showsAppIconInMenuBar {
+                Label {
+                    menuBarText(for: rows)
+                } icon: {
+                    Image(systemName: "house.fill")
+                }
+                .labelStyle(.titleAndIcon)
+                .lineLimit(1)
+                .frame(maxWidth: 260, alignment: .leading)
+            } else {
                 menuBarText(for: rows)
+                .lineLimit(1)
+                .frame(maxWidth: 260, alignment: .leading)
             }
-            .lineLimit(1)
-            .frame(maxWidth: 260, alignment: .leading)
-        } else {
-            menuBarText(for: rows)
-            .lineLimit(1)
-            .frame(maxWidth: 260, alignment: .leading)
+        }
+        .task {
+            await store.refreshIfConfigured()
         }
     }
 
