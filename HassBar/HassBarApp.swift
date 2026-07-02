@@ -35,6 +35,7 @@ private struct MenuBarStatusLabel: View {
             Label("HassBar", systemImage: "house.fill")
         } else {
             HStack(spacing: 4) {
+                Image(systemName: "house.fill")
                 ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                     if index > 0 {
                         Text("·")

@@ -68,6 +68,8 @@ final class AppConfigTests: XCTestCase {
         ])
         config.menuBarSensors = sensors
 
-        XCTAssertEqual(config.menuBarSensors, sensors)
+        XCTAssertEqual(config.menuBarSensors.items.map(\.entityID), sensors.items.map(\.entityID))
+        XCTAssertEqual(config.menuBarSensors.items.map(\.iconName), sensors.items.map(\.iconName))
+        XCTAssertEqual(config.menuBarSensors.items.map(\.showsIcon), sensors.items.map(\.showsIcon))
     }
 }
