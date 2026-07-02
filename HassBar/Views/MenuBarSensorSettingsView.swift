@@ -38,10 +38,23 @@ struct MenuBarSensorSettingsView: View {
 
     private var content: some View {
         VStack(spacing: 0) {
+            optionsBar
+            Divider()
             filterBar
             Divider()
             listContent
         }
+    }
+
+    private var optionsBar: some View {
+        HStack {
+            Toggle("Show app icon", isOn: showsAppIconInMenuBarBinding)
+                .toggleStyle(.checkbox)
+            Spacer()
+        }
+        .padding(.horizontal)
+        .padding(.top, 12)
+        .padding(.bottom, 4)
     }
 
     private var filterBar: some View {
@@ -141,6 +154,13 @@ struct MenuBarSensorSettingsView: View {
         Binding(
             get: { store.menuBarSensorItem(for: entityID)?.showsIcon ?? true },
             set: { store.setMenuBarSensorShowsIcon($0, for: entityID) }
+        )
+    }
+
+    private var showsAppIconInMenuBarBinding: Binding<Bool> {
+        Binding(
+            get: { store.showsAppIconInMenuBar },
+            set: { store.setShowsAppIconInMenuBar($0) }
         )
     }
 }

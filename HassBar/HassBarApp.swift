@@ -34,15 +34,22 @@ private struct MenuBarStatusLabel: View {
         if rows.isEmpty {
             Label("HassBar", systemImage: "house.fill")
         } else {
-            menuBarText(for: rows)
+            menuBarText(for: rows, showsAppIcon: store.showsAppIconInMenuBar)
             .lineLimit(1)
             .frame(maxWidth: 260, alignment: .leading)
         }
     }
 
-    private func menuBarText(for rows: [MenuBarSensorRow]) -> Text {
-        rows.enumerated().reduce(Text(Image(systemName: "house.fill"))) { partial, item in
-            let separator = item.offset == 0 ? Text(" ") : Text(" · ")
+    private func menuBarText(for rows: [MenuBarSensorRow], showsAppIcon: Bool) -> Text {
+        let initial = showsAppIcon ? Text(Image(systemName: "house.fill")) : Text("")
+
+        return rows.enumerated().reduce(initial) { partial, item in
+            let separator: Text
+            if item.offset == 0 {
+                separator = showsAppIcon ? Text(" ") : Text("")
+            } else {
+                separator = Text(" · ")
+            }
             return partial + separator + menuBarText(for: item.element)
         }
     }

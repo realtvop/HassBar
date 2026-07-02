@@ -80,6 +80,18 @@ nonisolated final class AppConfig {
         }
     }
 
+    var showsAppIconInMenuBar: Bool {
+        get {
+            guard defaults.object(forKey: Self.showsAppIconInMenuBarKey) != nil else {
+                return true
+            }
+            return defaults.bool(forKey: Self.showsAppIconInMenuBarKey)
+        }
+        set {
+            defaults.set(newValue, forKey: Self.showsAppIconInMenuBarKey)
+        }
+    }
+
     var token: String? {
         tokenStore.loadToken(for: Self.tokenAccount)
     }
@@ -107,5 +119,6 @@ nonisolated final class AppConfig {
     static let entityAliasesKey = "ha.entityAliases"
     static let entityIconsKey = "ha.entityIcons"
     static let menuBarSensorsKey = "ha.menuBarSensors"
+    static let showsAppIconInMenuBarKey = "ha.showsAppIconInMenuBar"
     static let tokenAccount = "long-lived-access-token"
 }

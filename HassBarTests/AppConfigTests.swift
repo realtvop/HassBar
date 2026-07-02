@@ -72,4 +72,15 @@ final class AppConfigTests: XCTestCase {
         XCTAssertEqual(config.menuBarSensors.items.map(\.iconName), sensors.items.map(\.iconName))
         XCTAssertEqual(config.menuBarSensors.items.map(\.showsIcon), sensors.items.map(\.showsIcon))
     }
+
+    func testShowsAppIconInMenuBarRoundTrip() {
+        let config = TestSupport.makeConfig()
+        XCTAssertTrue(config.showsAppIconInMenuBar)
+
+        config.showsAppIconInMenuBar = false
+        XCTAssertFalse(config.showsAppIconInMenuBar)
+
+        config.showsAppIconInMenuBar = true
+        XCTAssertTrue(config.showsAppIconInMenuBar)
+    }
 }

@@ -220,6 +220,21 @@ final class HomeAssistantStoreTests: XCTestCase {
         XCTAssertTrue(store.config.menuBarSensors.items.isEmpty)
     }
 
+    func testShowsAppIconInMenuBarWritesBack() {
+        let (store, _) = configuredStore()
+        XCTAssertTrue(store.showsAppIconInMenuBar)
+
+        store.setShowsAppIconInMenuBar(false)
+
+        XCTAssertFalse(store.showsAppIconInMenuBar)
+        XCTAssertFalse(store.config.showsAppIconInMenuBar)
+
+        store.config.showsAppIconInMenuBar = true
+        store.reloadConfiguration()
+
+        XCTAssertTrue(store.showsAppIconInMenuBar)
+    }
+
     func testMenuBarSensorMoveWritesBack() {
         let (store, _) = configuredStore()
         store.config.menuBarSensors = MenuBarSensors(items: [

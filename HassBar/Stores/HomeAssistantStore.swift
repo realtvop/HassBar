@@ -55,6 +55,7 @@ final class HomeAssistantStore: HAWebsocketDelegate {
     private(set) var entityAliases: EntityAliases
     private(set) var entityIcons: EntityIcons
     private(set) var menuBarSensors: MenuBarSensors
+    private(set) var showsAppIconInMenuBar: Bool
     private(set) var realtimeStatus: HARealtimeStatus = .disconnected
 
     private var webSocket: HomeAssistantWebSocket?
@@ -72,6 +73,7 @@ final class HomeAssistantStore: HAWebsocketDelegate {
         self.entityAliases = config.entityAliases
         self.entityIcons = config.entityIcons
         self.menuBarSensors = config.menuBarSensors
+        self.showsAppIconInMenuBar = config.showsAppIconInMenuBar
         refreshStatus()
     }
 
@@ -155,6 +157,11 @@ final class HomeAssistantStore: HAWebsocketDelegate {
     func moveMenuBarSensorsSubset(_ entityIDs: [String], from source: IndexSet, to destination: Int) {
         menuBarSensors.moveSubset(entityIDs, from: source, to: destination)
         config.menuBarSensors = menuBarSensors
+    }
+
+    func setShowsAppIconInMenuBar(_ showsIcon: Bool) {
+        showsAppIconInMenuBar = showsIcon
+        config.showsAppIconInMenuBar = showsIcon
     }
 
     // MARK: - Loading
@@ -334,6 +341,7 @@ final class HomeAssistantStore: HAWebsocketDelegate {
         entityAliases = config.entityAliases
         entityIcons = config.entityIcons
         menuBarSensors = config.menuBarSensors
+        showsAppIconInMenuBar = config.showsAppIconInMenuBar
         refreshStatus()
     }
 
