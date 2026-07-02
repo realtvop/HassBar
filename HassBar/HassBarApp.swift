@@ -56,7 +56,7 @@ private struct MenuBarStatusLabel: View {
 
     private func menuBarText(for rows: [MenuBarSensorRow]) -> Text {
         rows.enumerated().reduce(Text("")) { partial, item in
-            let separator = item.offset == 0 ? Text("") : Text(Self.narrowSpace)
+            let separator = item.offset == 0 ? Text(" ") : Text("  ")
             return partial + separator + menuBarText(for: item.element)
         }
     }
