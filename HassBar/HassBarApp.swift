@@ -33,19 +33,21 @@ private struct MenuBarStatusLabel: View {
         Group {
             let rows = store.menuBarSensorRows
             if rows.isEmpty {
-                HStack(alignment: .center, spacing: Self.itemSpacing) {
-                    statusIcon(named: "house.fill")
+                Label {
                     Text("HassBar")
+                } icon: {
+                    appIcon
                 }
+                .labelStyle(.titleAndIcon)
+            } else if store.showsAppIconInMenuBar {
+                Label {
+                    menuBarText(for: rows)
+                } icon: {
+                    appIcon
+                }
+                .labelStyle(.titleAndIcon)
             } else {
-                HStack(alignment: .center, spacing: Self.itemSpacing) {
-                    if store.showsAppIconInMenuBar {
-                        statusIcon(named: "house.fill")
-                    }
-                    ForEach(rows) { row in
-                        sensorSegment(for: row)
-                    }
-                }
+                menuBarText(for: rows)
             }
         }
         .font(Self.labelFont)
@@ -56,29 +58,48 @@ private struct MenuBarStatusLabel: View {
         }
     }
 
-    private func sensorSegment(for row: MenuBarSensorRow) -> some View {
-        HStack(alignment: .center, spacing: Self.itemSpacing) {
-            if row.item.showsIcon {
-                statusIcon(named: iconName(for: row))
-            }
-            Text(EntityMenuStyle.statusText(for: row.entity))
-        }
-        .lineLimit(1)
-        .opacity(row.entity.isAvailable ? 1 : 0.62)
+    private var appIcon: some View {
+        Image(systemName: "house.fill")
+            .font(Self.iconFont)
+            .offset(y: Self.iconVerticalOffset)
     }
 
-    private func statusIcon(named iconName: String) -> some View {
-        Image(systemName: iconName)
-            .font(Self.iconFont)
-            .frame(width: Self.iconFrame, height: Self.iconFrame, alignment: .center)
-            .offset(y: Self.iconVerticalOffset)
+    private func menuBarText(for rows: [MenuBarSensorRow]) -> Text {
+        rows.enumerated().reduce(Text("")) { partial, item in
+            let separator = item.offset == 0 ? Text("") : Self.separatorText
+            return partial + separator + menuBarText(for: item.element)
+        }
+    }
+
+    private func menuBarText(for row: MenuBarSensorRow) -> Text {
+        let status = Text(EntityMenuStyle.statusText(for: row.entity))
+        let content: Text
+
+        if row.item.showsIcon {
+            content = iconText(named: iconName(for: row)) + Self.separatorText + status
+        } else {
+            content = status
+        }
+
+        if row.entity.isAvailable {
+            return content
+        }
+
+        return content.foregroundColor(.secondary)
+    }
+
+    private func iconText(named iconName: String) -> Text {
+        Text(Image(systemName: iconName))
+            .font(Self.iconTextFont)
+            .baselineOffset(Self.iconBaselineOffset)
     }
 
     private static let labelFont = Font.system(size: 12, weight: .regular)
     private static let iconFont = Font.system(size: 11, weight: .regular)
-    private static let iconFrame: CGFloat = 12
+    private static let iconTextFont = Font.system(size: 10, weight: .regular)
     private static let iconVerticalOffset: CGFloat = -0.75
-    private static let itemSpacing: CGFloat = 3
+    private static let iconBaselineOffset: CGFloat = 1.25
+    private static let separatorText = Text("\u{202F}")
 
     private func iconName(for row: MenuBarSensorRow) -> String {
         if row.item.showsIcon {
