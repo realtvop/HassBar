@@ -34,37 +34,30 @@ private struct MenuBarStatusLabel: View {
         if rows.isEmpty {
             Label("HassBar", systemImage: "house.fill")
         } else {
-            HStack(spacing: 4) {
-                Image(systemName: "house.fill")
-                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                    if index > 0 {
-                        Text("·")
-                            .foregroundStyle(.secondary)
-                    }
-                    MenuBarSensorLabelItem(row: row)
-                }
-            }
+            menuBarText(for: rows)
             .lineLimit(1)
             .frame(maxWidth: 260, alignment: .leading)
         }
     }
-}
 
-private struct MenuBarSensorLabelItem: View {
-    let row: MenuBarSensorRow
-
-    var body: some View {
-        HStack(spacing: 3) {
-            if row.item.showsIcon {
-                Image(systemName: iconName)
-            }
-            Text(EntityMenuStyle.statusText(for: row.entity))
-                .lineLimit(1)
+    private func menuBarText(for rows: [MenuBarSensorRow]) -> Text {
+        rows.enumerated().reduce(Text(Image(systemName: "house.fill"))) { partial, item in
+            let separator = item.offset == 0 ? Text(" ") : Text(" · ")
+            return partial + separator + menuBarText(for: item.element)
         }
-        .opacity(row.entity.isAvailable ? 1 : 0.55)
     }
 
-    private var iconName: String {
+    private func menuBarText(for row: MenuBarSensorRow) -> Text {
+        let status = Text(EntityMenuStyle.statusText(for: row.entity))
+
+        if row.item.showsIcon {
+            return Text(Image(systemName: iconName(for: row))) + Text(" ") + status
+        }
+
+        return status
+    }
+
+    private func iconName(for row: MenuBarSensorRow) -> String {
         if !row.item.iconName.isEmpty,
            NSImage(systemSymbolName: row.item.iconName, accessibilityDescription: nil) != nil {
             return row.item.iconName
