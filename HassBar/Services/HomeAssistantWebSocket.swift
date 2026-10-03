@@ -111,8 +111,13 @@ nonisolated struct HAWebSocketHandshake {
     }
 }
 
+nonisolated protocol HARealtimeConnecting: Sendable {
+    func start() async
+    func stop() async
+}
+
 /// One receive/reconnect task per connection; cancellation invalidates all old work.
-actor HomeAssistantWebSocket {
+actor HomeAssistantWebSocket: HARealtimeConnecting {
     private let baseURL: URL
     private let token: String
     private weak var delegate: (any HAWebsocketDelegate)?

@@ -30,7 +30,7 @@ struct MenuBarSensorRow: Identifiable, Equatable {
 @Observable
 final class HomeAssistantStore: HAWebsocketDelegate {
     let config: AppConfig
-    private let makeClient: (HAConnection) -> any HomeAssistantCalling
+    private let makeClient: @MainActor (HAConnection) -> any HomeAssistantCalling
 
     private(set) var status: HAConnectionStatus = .unconfigured
     private(set) var entities: [String: HAEntity] = [:]
@@ -40,14 +40,6 @@ final class HomeAssistantStore: HAWebsocketDelegate {
     /// Entity ids with an in-flight service call.
     private(set) var pendingActions: Set<String> = []
 
-    /// Test hook to register a pending action without issuing a service call.
-    func registerPendingAction(_ id: String) {
-        pendingActions.insert(id)
-    }
-    /// Removes a pending action; used by tests or WS event application.
-    func clearPendingAction(_ id: String) {
-        pendingActions.remove(id)
-    }
     /// Most recent per-entity service call error.
     private(set) var actionErrors: [String: HAError] = [:]
 
@@ -58,17 +50,35 @@ final class HomeAssistantStore: HAWebsocketDelegate {
     private(set) var showsAppIconInMenuBar: Bool
     private(set) var realtimeStatus: HARealtimeStatus = .disconnected
 
-    private var webSocket: HomeAssistantWebSocket?
+    private var webSocket: (any HARealtimeConnecting)?
+    private var realtimeSink: HARealtimeSink?
+    private var realtimeGeneration = UUID()
+    private let makeRealtime: @MainActor (HAConnection, any HAWebsocketDelegate) -> any HARealtimeConnecting
+    private var activeConnection: HAConnection?
+    private var connectionGeneration = UUID()
+    private var refreshTask: Task<Void, Never>?
+    private var refreshID: UUID?
+    private var stateRevision: UInt64 = 0
+    private var entityRevisions: [String: UInt64] = [:]
+    private(set) var lastUpdated: Date?
+    private let actionPollDelay: Duration
     let startRealtimeOnRefresh: Bool
 
     init(
         config: AppConfig,
         startRealtimeOnRefresh: Bool = true,
-        makeClient: @escaping (HAConnection) -> any HomeAssistantCalling = { HomeAssistantClient(connection: $0) }
+        actionPollDelay: Duration = .milliseconds(300),
+        makeRealtime: @escaping @MainActor (HAConnection, any HAWebsocketDelegate) -> any HARealtimeConnecting = {
+            HomeAssistantWebSocket(baseURL: $0.baseURL, token: $0.token, delegate: $1)
+        },
+        makeClient: @escaping @MainActor (HAConnection) -> any HomeAssistantCalling = { HomeAssistantClient(connection: $0) }
     ) {
         self.config = config
         self.startRealtimeOnRefresh = startRealtimeOnRefresh
         self.makeClient = makeClient
+        self.makeRealtime = makeRealtime
+        self.actionPollDelay = actionPollDelay
+        self.activeConnection = config.connection
         self.favorites = config.favorites
         self.entityAliases = config.entityAliases
         self.entityIcons = config.entityIcons
@@ -166,73 +176,116 @@ final class HomeAssistantStore: HAWebsocketDelegate {
 
     // MARK: - Loading
 
-    /// Re-fetch `/api/states`. Keeps last known entities on failure.
+    /// Coalesces concurrent callers and preserves newer realtime changes during a snapshot fetch.
     func refresh() async {
-        guard config.isConfigured else {
+        synchronizeConnection()
+        guard let connection = activeConnection else {
             status = .unconfigured
             return
         }
-        guard let url = URL(string: config.haURL), let token = config.token, !token.isEmpty else {
-            status = .unconfigured
+        if let refreshTask {
+            await refreshTask.value
             return
         }
-        let client: any HomeAssistantCalling = makeClient(HAConnection(baseURL: url, token: token))
-
+        let operationID = UUID()
+        let generation = connectionGeneration
+        refreshID = operationID
         isLoading = true
-        status = .connecting
-        do {
-            let states = try await client.fetchStates()
-            var cache: [String: HAEntity] = [:]
-            cache.reserveCapacity(states.count)
-            for entity in states {
-                cache[entity.entityID] = entity
-            }
-            entities = cache
-            lastError = nil
-            status = .connected
-            startRealtimeIfNeeded()
-        } catch let error as HAError {
-            lastError = error
-            status = .error(error)
-        } catch {
-            lastError = .transport(error.localizedDescription)
-            status = .error(.transport(error.localizedDescription))
-        }
-        isLoading = false
+        if entities.isEmpty { status = .connecting }
+        let task = Task { await performRefresh(connection: connection, generation: generation, operationID: operationID) }
+        refreshTask = task
+        await task.value
     }
 
-    /// Convenience for view appearance: refresh once if configured.
+    private func performRefresh(connection: HAConnection, generation: UUID, operationID: UUID) async {
+        defer {
+            if refreshID == operationID {
+                refreshTask = nil
+                refreshID = nil
+                isLoading = false
+            }
+        }
+        let revision = stateRevision
+        do {
+            let states = try await makeClient(connection).fetchStates()
+            guard isCurrent(generation, connection: connection), !Task.isCancelled else { return }
+            var cache: [String: HAEntity] = [:]
+            for entity in states { cache[entity.entityID] = entity }
+            for (id, version) in entityRevisions where version > revision {
+                cache[id] = entities[id]
+            }
+            entities = cache
+            lastUpdated = Date()
+            lastError = nil
+            status = .connected
+            await startRealtimeIfNeeded(connection: connection, generation: generation)
+        } catch {
+            guard isCurrent(generation, connection: connection) else { return }
+            if Task.isCancelled || error is CancellationError {
+                status = entities.isEmpty ? .disconnected : .connected
+                return
+            }
+            let failure = (error as? HAError) ?? .transport(error.localizedDescription)
+            lastError = failure
+            status = .error(failure)
+        }
+    }
+
+    /// View appearances share the cache; the refresh button explicitly requests a new snapshot.
     func refreshIfConfigured() async {
-        guard config.isConfigured else { return }
+        synchronizeConnection()
+        guard activeConnection != nil, lastUpdated == nil else { return }
         await refresh()
+    }
+
+    private func isCurrent(_ generation: UUID, connection: HAConnection) -> Bool {
+        generation == connectionGeneration && activeConnection == connection && config.connection == connection
+    }
+
+    private func synchronizeConnection() {
+        let connection = config.connection
+        guard connection != activeConnection else { return }
+        connectionGeneration = UUID()
+        activeConnection = connection
+        refreshTask?.cancel()
+        refreshTask = nil
+        refreshID = nil
+        isLoading = false
+        stopRealtime()
+        entities = [:]
+        entityRevisions = [:]
+        pendingActions = []
+        actionErrors = [:]
+        lastError = nil
+        lastUpdated = nil
+        status = connection == nil ? .unconfigured : .disconnected
     }
 
     // MARK: - Service calls
 
     func callService(domain: String, service: String, entityID: String, serviceData: [String: Any]? = nil) async {
-        guard config.isConfigured, let url = URL(string: config.haURL), let token = config.token, !token.isEmpty else {
+        synchronizeConnection()
+        guard !pendingActions.contains(entityID) else { return }
+        guard let connection = activeConnection else {
             actionErrors[entityID] = .missingToken
             return
         }
-        let client: any HomeAssistantCalling = makeClient(HAConnection(baseURL: url, token: token))
-
+        let generation = connectionGeneration
+        let client = makeClient(connection)
         pendingActions.insert(entityID)
         actionErrors[entityID] = nil
-        let previousState = entities[entityID]?.state
+        let previous = entities[entityID]
+        defer {
+            if isCurrent(generation, connection: connection) { pendingActions.remove(entityID) }
+        }
         do {
             try await client.callService(domain: domain, service: service, entityID: entityID, serviceData: serviceData)
-            // HA may not apply the service call synchronously, so poll the
-            // entity state for a short window until it changes (or give up
-            // and let WebSocket `state_changed` events handle it). This keeps
-            // `pendingActions` set while polling so the spinner stays visible.
-            await pollForStateChange(client: client, entityID: entityID, previousState: previousState)
-            pendingActions.remove(entityID)
-        } catch let error as HAError {
-            actionErrors[entityID] = error
-            pendingActions.remove(entityID)
+            guard isCurrent(generation, connection: connection), !Task.isCancelled else { return }
+            await pollForStateChange(client: client, entityID: entityID, previous: previous,
+                                     connection: connection, generation: generation)
         } catch {
-            actionErrors[entityID] = .transport(error.localizedDescription)
-            pendingActions.remove(entityID)
+            guard isCurrent(generation, connection: connection), !Task.isCancelled, !(error is CancellationError) else { return }
+            actionErrors[entityID] = (error as? HAError) ?? .transport(error.localizedDescription)
         }
     }
 
@@ -276,34 +329,36 @@ final class HomeAssistantStore: HAWebsocketDelegate {
 
     // MARK: - Favorites
 
-    /// Polls the entity state for a short window after a service call,
-    /// waiting for HA to apply the change. Updates `entities` and returns
-    /// as soon as the state differs from `previousState`. Best-effort:
-    /// errors are swallowed and WebSocket events may still apply updates.
+    /// Attribute changes count too: brightness/temperature may change while state stays "on".
     private func pollForStateChange(
         client: any HomeAssistantCalling,
         entityID: String,
-        previousState: String?,
-        attempts: Int = 6,
-        initialDelay: Duration = .milliseconds(300),
-        maxDelay: Duration = .milliseconds(1500)
+        previous: HAEntity?,
+        connection: HAConnection,
+        generation: UUID
     ) async {
-        var delay = initialDelay
-        for _ in 0..<attempts {
-            try? await Task.sleep(for: delay)
-            guard !Task.isCancelled else { return }
+        var delay = actionPollDelay
+        for _ in 0..<6 {
+            guard isCurrent(generation, connection: connection), !Task.isCancelled else { return }
+            if let current = entities[entityID], hasChanged(current, from: previous) { return }
             do {
+                try await Task.sleep(for: delay)
+                let revision = stateRevision
                 let updated = try await client.fetchEntity(entityID: entityID)
-                if previousState == nil || updated.state != previousState {
+                guard isCurrent(generation, connection: connection), !Task.isCancelled else { return }
+                // A realtime update received during this request takes precedence over its response.
+                if (entityRevisions[entityID] ?? 0) <= revision {
                     entities[entityID] = updated
-                    return
+                    recordChange(entityID)
                 }
-                entities[entityID] = updated
-            } catch {
-                return
-            }
-            delay = min(delay * 2, maxDelay)
+                if let current = entities[entityID], hasChanged(current, from: previous) { return }
+            } catch { return }
+            delay = min(delay * 2, .milliseconds(1500))
         }
+    }
+
+    private func hasChanged(_ entity: HAEntity, from previous: HAEntity?) -> Bool {
+        entity.state != previous?.state || entity.attributes != previous?.attributes
     }
 
     func toggleFavorite(_ id: String) {
@@ -342,6 +397,7 @@ final class HomeAssistantStore: HAWebsocketDelegate {
         entityIcons = config.entityIcons
         menuBarSensors = config.menuBarSensors
         showsAppIconInMenuBar = config.showsAppIconInMenuBar
+        synchronizeConnection()
         refreshStatus()
     }
 
@@ -361,24 +417,44 @@ final class HomeAssistantStore: HAWebsocketDelegate {
 
     // MARK: - WebSocket
 
-    private func startRealtimeIfNeeded() {
-        guard startRealtimeOnRefresh, config.isConfigured,
-              let url = URL(string: config.haURL),
-              let token = config.token, !token.isEmpty else { return }
+    private func startRealtimeIfNeeded(connection: HAConnection, generation: UUID) async {
+        guard startRealtimeOnRefresh, isCurrent(generation, connection: connection) else { return }
         if let webSocket {
-            Task { await webSocket.stop() }
+            if case .failed = realtimeStatus { await webSocket.start() }
+            return
         }
-        let ws = HomeAssistantWebSocket(baseURL: url, token: token, delegate: self)
-        webSocket = ws
-        Task { await ws.start() }
+        realtimeGeneration = UUID()
+        let sink = HARealtimeSink(store: self, generation: realtimeGeneration)
+        realtimeSink = sink
+        let socket = makeRealtime(connection, sink)
+        webSocket = socket
+        await socket.start()
     }
 
     func stopRealtime() {
-        if let ws = webSocket {
-            Task { await ws.stop() }
-        }
+        realtimeGeneration = UUID()
+        realtimeSink = nil
+        if let socket = webSocket { Task { await socket.stop() } }
         webSocket = nil
         realtimeStatus = .disconnected
+    }
+
+    fileprivate func receive(status: HARealtimeStatus, generation: UUID) {
+        guard generation == realtimeGeneration, realtimeSink != nil, config.connection == activeConnection else { return }
+        realtimeStatus = status
+        if status == .connected {
+            // Catch events missed before subscription and during a reconnect gap.
+            Task {
+                if let refreshTask { await refreshTask.value }
+                guard generation == realtimeGeneration, realtimeSink != nil, config.connection == activeConnection else { return }
+                await refresh()
+            }
+        }
+    }
+
+    fileprivate func receive(event: HAWebsocketEvent, generation: UUID) {
+        guard generation == realtimeGeneration, realtimeSink != nil, config.connection == activeConnection else { return }
+        applyRealtimeEvent(event)
     }
 
     func realtime(didChange status: HARealtimeStatus) {
@@ -389,17 +465,43 @@ final class HomeAssistantStore: HAWebsocketDelegate {
         applyRealtimeEvent(event)
     }
 
-    @MainActor
     private func applyRealtimeEvent(_ event: HAWebsocketEvent) {
+        let entityID: String
         switch event {
-        case .stateChanged(_, let entity):
-            entities[entity.entityID] = entity
-            // Clear any pending action once the new state arrives.
-            pendingActions.remove(entity.entityID)
-        case .entityRemoved(let entityID):
-            entities[entityID] = nil
+        case .stateChanged(let id, let entity):
+            entityID = id
+            entities[id] = entity
+        case .entityRemoved(let id):
+            entityID = id
+            entities[id] = nil
         case .unknown:
-            break
+            return
         }
+        recordChange(entityID)
+    }
+
+    private func recordChange(_ entityID: String) {
+        stateRevision += 1
+        entityRevisions[entityID] = stateRevision
+        lastUpdated = Date()
+    }
+}
+
+@MainActor
+private final class HARealtimeSink: HAWebsocketDelegate {
+    weak var store: HomeAssistantStore?
+    let generation: UUID
+
+    init(store: HomeAssistantStore, generation: UUID) {
+        self.store = store
+        self.generation = generation
+    }
+
+    func realtime(didChange status: HARealtimeStatus) {
+        store?.receive(status: status, generation: generation)
+    }
+
+    func realtime(didReceive event: HAWebsocketEvent) {
+        store?.receive(event: event, generation: generation)
     }
 }

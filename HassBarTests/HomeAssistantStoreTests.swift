@@ -8,6 +8,8 @@ final class FakeHAClient: HomeAssistantCalling {
     var testResult: Result<Void, Error> = .success(())
     var fetchEntityResult: Result<HAEntity, Error>?
     private(set) var callInvocations: [(domain: String, service: String, entityID: String, serviceData: [String: Any]?)] = []
+    var fetchHandler: (() async throws -> [HAEntity])?
+    var callHandler: (() async throws -> Void)?
     private(set) var fetchCount = 0
     private(set) var fetchEntityInvocations: [String] = []
 
@@ -21,6 +23,7 @@ final class FakeHAClient: HomeAssistantCalling {
 
     func fetchStates() async throws -> [HAEntity] {
         fetchCount += 1
+        if let fetchHandler { return try await fetchHandler() }
         return try fetchResult.get()
     }
 
@@ -29,13 +32,26 @@ final class FakeHAClient: HomeAssistantCalling {
         if let result = fetchEntityResult {
             return try result.get()
         }
-        return try fetchResult.get().first(where: { $0.entityID == entityID })!
+        guard let entity = try fetchResult.get().first(where: { $0.entityID == entityID }) else { throw HAError.httpStatus(404) }
+        return entity
     }
 
     func callService(domain: String, service: String, entityID: String, serviceData: [String: Any]?) async throws {
         callInvocations.append((domain, service, entityID, serviceData))
+        if let callHandler { try await callHandler() }
         try callResult.get()
     }
+}
+
+@MainActor
+final class FakeHARealtime: HARealtimeConnecting {
+    let delegate: any HAWebsocketDelegate
+    private(set) var starts = 0
+    private(set) var stops = 0
+
+    init(delegate: any HAWebsocketDelegate) { self.delegate = delegate }
+    @MainActor func start() async { starts += 1 }
+    @MainActor func stop() async { stops += 1 }
 }
 
 @MainActor
@@ -49,8 +65,139 @@ final class HomeAssistantStoreTests: XCTestCase {
         config.haURL = "http://ha.local:8123"
         try? config.saveToken("T")
         let fake = FakeHAClient(fetchResult: fetch)
-        let store = HomeAssistantStore(config: config, startRealtimeOnRefresh: false) { _ in fake }
+        let store = HomeAssistantStore(config: config, startRealtimeOnRefresh: false, actionPollDelay: .zero, makeClient: { _ in fake })
         return (store, fake)
+    }
+
+    func testConcurrentRefreshesShareOneRequestAndAppearanceUsesCache() async {
+        let (store, fake) = configuredStore()
+        var resume: CheckedContinuation<[HAEntity], Error>?
+        fake.fetchHandler = { try await withCheckedThrowingContinuation { resume = $0 } }
+        let first = Task { await store.refresh() }
+        while resume == nil { await Task.yield() }
+        let second = Task { await store.refresh() }
+        await Task.yield()
+        resume?.resume(returning: [entity("light.a", "on")])
+        await first.value
+        await second.value
+        await store.refreshIfConfigured()
+        XCTAssertEqual(fake.fetchCount, 1)
+        XCTAssertFalse(store.isLoading)
+    }
+
+    func testOldServerResponseCannotReplaceNewServerCache() async throws {
+        let (store, fake) = configuredStore()
+        var resume: CheckedContinuation<[HAEntity], Error>?
+        fake.fetchHandler = { try await withCheckedThrowingContinuation { resume = $0 } }
+        let oldRequest = Task { await store.refresh() }
+        while resume == nil { await Task.yield() }
+        try store.config.saveConnection(url: "http://new.local", token: "NEW")
+        store.reloadConfiguration()
+        XCTAssertTrue(store.entities.isEmpty)
+        XCTAssertFalse(store.isLoading)
+        fake.fetchHandler = nil
+        fake.fetchResult = .success([entity("sensor.new", "42")])
+        await store.refresh()
+        resume?.resume(returning: [entity("sensor.old", "1")])
+        await oldRequest.value
+        XCTAssertEqual(Set(store.entities.keys), ["sensor.new"])
+        XCTAssertEqual(store.status, .connected)
+    }
+
+    func testSnapshotDoesNotOverwriteNewerRealtimeChangesOrDeletion() async {
+        let (store, fake) = configuredStore(fetch: .success([entity("light.a", "off"), entity("sensor.old", "1")]))
+        await store.refresh()
+        var resume: CheckedContinuation<[HAEntity], Error>?
+        fake.fetchHandler = { try await withCheckedThrowingContinuation { resume = $0 } }
+        let request = Task { await store.refresh() }
+        while resume == nil { await Task.yield() }
+        store.realtime(didReceive: .stateChanged(entityID: "light.a", entity: entity("light.a", "on")))
+        store.realtime(didReceive: .entityRemoved(entityID: "sensor.old"))
+        resume?.resume(returning: [entity("light.a", "off"), entity("sensor.old", "1")])
+        await request.value
+        XCTAssertEqual(store.entities["light.a"]?.state, "on")
+        XCTAssertNil(store.entities["sensor.old"])
+    }
+
+    func testDuplicateActionsAreIgnoredUntilServiceReturns() async {
+        let (store, fake) = configuredStore(fetch: .success([entity("light.a", "off")]))
+        await store.refresh()
+        var resume: CheckedContinuation<Void, Error>?
+        fake.callHandler = { try await withCheckedThrowingContinuation { resume = $0 } }
+        let action = Task { await store.callService(domain: "light", service: "turn_on", entityID: "light.a") }
+        while resume == nil { await Task.yield() }
+        store.realtime(didReceive: .stateChanged(entityID: "light.a", entity: entity("light.a", "on")))
+        XCTAssertTrue(store.pendingActions.contains("light.a"))
+        await store.callService(domain: "light", service: "turn_on", entityID: "light.a")
+        XCTAssertEqual(fake.callInvocations.count, 1)
+        resume?.resume(returning: ())
+        await action.value
+        XCTAssertFalse(store.pendingActions.contains("light.a"))
+    }
+
+    func testAttributeOnlyChangeEndsActionPolling() async {
+        let before = HAEntity(entityID: "light.a", state: "on", attributes: HAAttributes(friendlyName: nil, unitOfMeasurement: nil, brightness: 10))
+        let after = HAEntity(entityID: "light.a", state: "on", attributes: HAAttributes(friendlyName: nil, unitOfMeasurement: nil, brightness: 128))
+        let (store, fake) = configuredStore(fetch: .success([before]))
+        fake.fetchEntityResult = .success(after)
+        await store.refresh()
+        await store.setBrightness(entityID: "light.a", percent: 50)
+        XCTAssertEqual(fake.fetchEntityInvocations.count, 1)
+        XCTAssertEqual(store.entities["light.a"]?.brightnessPercent, 50)
+    }
+
+    func testRefreshFailureRetainsLastKnownCache() async {
+        let (store, fake) = configuredStore(fetch: .success([entity("light.a", "on")]))
+        await store.refresh()
+        fake.fetchResult = .failure(HAError.httpStatus(503))
+        await store.refresh()
+        XCTAssertEqual(store.entities["light.a"]?.state, "on")
+        XCTAssertNotNil(store.lastUpdated)
+        XCTAssertEqual(store.lastError, .httpStatus(503))
+    }
+
+    func testRefreshKeepsSocketAndIgnoresCallbacksFromReplacedConnection() async throws {
+        let config = TestSupport.makeConfig()
+        try config.saveConnection(url: "http://old.local", token: "OLD")
+        let fake = FakeHAClient(fetchResult: .success([entity("light.a", "off")]))
+        var sockets: [FakeHARealtime] = []
+        let store = HomeAssistantStore(config: config, makeRealtime: { _, delegate in
+            let socket = FakeHARealtime(delegate: delegate)
+            sockets.append(socket)
+            return socket
+        }, makeClient: { _ in fake })
+        await store.refresh()
+        await store.refresh()
+        XCTAssertEqual(sockets.count, 1)
+        XCTAssertEqual(sockets[0].starts, 1)
+        try config.saveConnection(url: "http://new.local", token: "NEW")
+        store.reloadConfiguration()
+        await store.refresh()
+        XCTAssertEqual(sockets.count, 2)
+        sockets[0].delegate.realtime(didChange: .failed("Old failure"))
+        sockets[0].delegate.realtime(didReceive: .stateChanged(entityID: "sensor.old", entity: entity("sensor.old", "1")))
+        XCTAssertNil(store.entities["sensor.old"])
+        XCTAssertEqual(store.realtimeStatus, .disconnected)
+        store.stopRealtime()
+    }
+
+    func testSubscriptionAndReconnectResynchronizeSnapshot() async throws {
+        let config = TestSupport.makeConfig()
+        try config.saveConnection(url: "http://ha.local", token: "T")
+        let fake = FakeHAClient(fetchResult: .success([entity("light.a", "off")]))
+        var socket: FakeHARealtime?
+        let store = HomeAssistantStore(config: config, makeRealtime: { _, delegate in
+            let result = FakeHARealtime(delegate: delegate)
+            socket = result
+            return result
+        }, makeClient: { _ in fake })
+        await store.refresh()
+        fake.fetchResult = .success([entity("light.a", "on")])
+        socket?.delegate.realtime(didChange: .connected)
+        while fake.fetchCount < 2 || store.isLoading { await Task.yield() }
+        XCTAssertEqual(store.entities["light.a"]?.state, "on")
+        XCTAssertEqual(socket?.starts, 1)
+        store.stopRealtime()
     }
 
     func testRefreshPopulatesCacheAndConnected() async {
@@ -110,15 +257,13 @@ final class HomeAssistantStoreTests: XCTestCase {
         XCTAssertTrue(store.pendingActions.isEmpty)
     }
 
-    func testApplyRealtimeEventUpdatesSingleEntityAndClearsPending() async {
+    func testRealtimeEventUpdatesSingleEntity() async {
         let (store, _) = configuredStore(fetch: .success([entity("light.a","off")]))
         await store.refresh()
-        store.registerPendingAction("light.a")
         let updated = HAEntity(entityID: "light.a", state: "on", attributes: HAAttributes(friendlyName: nil, unitOfMeasurement: nil))
         store.realtime(didReceive: .stateChanged(entityID: "light.a", entity: updated))
         await Task.yield()
         XCTAssertEqual(store.entities["light.a"]?.state, "on")
-        XCTAssertFalse(store.pendingActions.contains("light.a"))
     }
 
     func testUnconfiguredRefreshStaysUnconfigured() async {
