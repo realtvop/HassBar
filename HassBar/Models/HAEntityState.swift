@@ -7,13 +7,13 @@
 
 import Foundation
 
-struct RGBColorComponents: Equatable, Sendable {
+nonisolated struct RGBColorComponents: Equatable, Sendable {
     let red: Double
     let green: Double
     let blue: Double
 }
 
-enum ColorTemperatureRGB {
+nonisolated enum ColorTemperatureRGB {
     static func components(forKelvin kelvin: Int) -> RGBColorComponents {
         let temperature = Double(min(max(kelvin, 1_000), 40_000)) / 100.0
         let red: Double
@@ -51,7 +51,7 @@ enum ColorTemperatureRGB {
 /// Attributes payload for a Home Assistant entity state.
 /// Only the fields HassBar cares about are modeled; all other keys
 /// are ignored by the decoder so unexpected attribute shapes do not fail decoding.
-struct HAAttributes: Decodable, Equatable, Sendable {
+nonisolated struct HAAttributes: Decodable, Equatable, Sendable {
     var friendlyName: String?
     var unitOfMeasurement: String?
     var brightness: Int?
@@ -150,7 +150,7 @@ struct HAAttributes: Decodable, Equatable, Sendable {
     }
 }
 
-private extension KeyedDecodingContainer where K == HAAttributes.CodingKeys {
+nonisolated private extension KeyedDecodingContainer where K == HAAttributes.CodingKeys {
     func decodeLossyIntIfPresent(forKey key: K) -> Int? {
         if let value = try? decodeIfPresent(Int.self, forKey: key) {
             return value
@@ -181,7 +181,7 @@ private extension KeyedDecodingContainer where K == HAAttributes.CodingKeys {
 
 /// A single Home Assistant entity state as returned by `/api/states`
 /// or carried by a `state_changed` event.
-struct HAEntity: Decodable, Equatable, Identifiable, Sendable {
+nonisolated struct HAEntity: Decodable, Equatable, Identifiable, Sendable {
     let entityID: String
     var state: String
     var attributes: HAAttributes
@@ -323,7 +323,7 @@ struct HAEntity: Decodable, Equatable, Identifiable, Sendable {
 }
 
 /// Home Assistant domains HassBar recognizes for filtering and control.
-enum HADomain: String, CaseIterable, Sendable {
+nonisolated enum HADomain: String, CaseIterable, Sendable {
     case sensor
     case binarySensor = "binary_sensor"
     case light

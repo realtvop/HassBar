@@ -381,16 +381,12 @@ final class HomeAssistantStore: HAWebsocketDelegate {
         realtimeStatus = .disconnected
     }
 
-    nonisolated func realtime(didChange status: HARealtimeStatus) {
-        Task { @MainActor in
-            self.realtimeStatus = status
-        }
+    func realtime(didChange status: HARealtimeStatus) {
+        realtimeStatus = status
     }
 
-    nonisolated func realtime(didReceive event: HAWebsocketEvent) {
-        Task { @MainActor in
-            self.applyRealtimeEvent(event)
-        }
+    func realtime(didReceive event: HAWebsocketEvent) {
+        applyRealtimeEvent(event)
     }
 
     @MainActor
@@ -400,6 +396,8 @@ final class HomeAssistantStore: HAWebsocketDelegate {
             entities[entity.entityID] = entity
             // Clear any pending action once the new state arrives.
             pendingActions.remove(entity.entityID)
+        case .entityRemoved(let entityID):
+            entities[entityID] = nil
         case .unknown:
             break
         }

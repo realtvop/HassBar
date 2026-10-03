@@ -1,14 +1,6 @@
-//
-//  HomeAssistantWebSocket.swift
-//  HassBar
-//
-//  Created by realtvop on 2026/6/28.
-//
-
 import Foundation
 
-/// Realtime connection states surfaced to the store/UI.
-enum HARealtimeStatus: Equatable, Sendable {
+nonisolated enum HARealtimeStatus: Equatable, Sendable {
     case disconnected
     case connecting
     case authenticating
@@ -17,204 +9,221 @@ enum HARealtimeStatus: Equatable, Sendable {
     case failed(String)
 }
 
-/// Decoded Home Assistant WebSocket event types we care about.
-enum HAWebsocketEvent: Equatable, Sendable {
+nonisolated enum HAWebsocketEvent: Equatable, Sendable {
     case stateChanged(entityID: String, entity: HAEntity)
+    case entityRemoved(entityID: String)
     case unknown
 }
 
-/// Errors emitted by the WebSocket client.
-enum HAWebsocketError: Error, Equatable {
-    case authRequired
-    case authInvalid
-    case authFailed(String)
-    case unexpectedMessage
-    case decodeError
-}
-
-/// Delegate-style sink for realtime events and connection state changes.
+@MainActor
 protocol HAWebsocketDelegate: AnyObject, Sendable {
     func realtime(didChange status: HARealtimeStatus)
     func realtime(didReceive event: HAWebsocketEvent)
 }
 
-/// Owns the Home Assistant WebSocket connection: handshake, auth, `subscribe_events`,
-/// `state_changed` decoding, and bounded exponential-backoff reconnect.
-///
-/// The class is `Sendable`-annotated because it only mutates through async tasks
-/// serialized on `URLSession`'s delegate queue + an internal `actor`. Swift 6
-/// strict concurrency treats mutable properties as isolated behind the actor.
+/// Wire format shared by the transport and protocol regression tests.
+nonisolated struct HAWebSocketMessage: Decodable {
+    let type: String
+    var id: Int?
+    var success: Bool?
+    var message: String?
+    var error: Failure?
+    var event: Event?
+
+    struct Failure: Decodable {
+        var message: String?
+    }
+
+    struct Event: Decodable {
+        let eventType: String
+        let data: StateChange
+
+        enum CodingKeys: String, CodingKey {
+            case eventType = "event_type"
+            case data
+        }
+    }
+
+    struct StateChange: Decodable {
+        let entityID: String
+        let newState: HAEntity?
+
+        enum CodingKeys: String, CodingKey {
+            case entityID = "entity_id"
+            case newState = "new_state"
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            entityID = try container.decode(String.self, forKey: .entityID)
+            newState = try container.decode(HAEntity?.self, forKey: .newState)
+        }
+    }
+
+    var stateChange: HAWebsocketEvent? {
+        guard type == "event", let event, event.eventType == "state_changed" else { return nil }
+        if let entity = event.data.newState {
+            guard entity.entityID == event.data.entityID else { return nil }
+            return .stateChanged(entityID: entity.entityID, entity: entity)
+        }
+        return .entityRemoved(entityID: event.data.entityID)
+    }
+}
+
+/// Tracks authentication and the matching subscription acknowledgement.
+nonisolated struct HAWebSocketHandshake {
+    enum Action: Equatable {
+        case authenticate
+        case subscribe
+        case connected
+        case failed(String)
+    }
+
+    private enum Phase { case authentication, authenticating, subscribing, connected }
+    private var phase = Phase.authentication
+    let subscriptionID: Int
+
+    init(subscriptionID: Int) {
+        self.subscriptionID = subscriptionID
+    }
+
+    var isConnected: Bool { phase == .connected }
+
+    mutating func receive(_ message: HAWebSocketMessage) -> Action? {
+        switch (phase, message.type) {
+        case (_, "auth_invalid"):
+            return .failed("Authentication failed. Check the access token.")
+        case (.authentication, "auth_required"):
+            phase = .authenticating
+            return .authenticate
+        case (.authenticating, "auth_ok"):
+            phase = .subscribing
+            return .subscribe
+        case (.subscribing, "result") where message.id == subscriptionID:
+            guard message.success == true else {
+                return .failed(message.error?.message ?? "Event subscription failed")
+            }
+            phase = .connected
+            return .connected
+        default:
+            return nil
+        }
+    }
+}
+
+/// One receive/reconnect task per connection; cancellation invalidates all old work.
 actor HomeAssistantWebSocket {
     private let baseURL: URL
     private let token: String
     private weak var delegate: (any HAWebsocketDelegate)?
-
-    private var task: URLSessionWebSocketTask?
-    private var nextID: Int = 1
-    private var subscriptions: Set<String> = []
+    private let session: URLSession
+    private var socket: URLSessionWebSocketTask?
     private var receiveTask: Task<Void, Never>?
-    private var reconnectAttempt = 0
-    private var stopped = false
-
-    private nonisolated let session: URLSession
+    private var generation = UUID()
 
     init(baseURL: URL, token: String, delegate: any HAWebsocketDelegate, session: URLSession = .shared) {
-        self.session = session
         self.baseURL = baseURL
         self.token = token
         self.delegate = delegate
+        self.session = session
     }
 
     nonisolated var websocketURL: URL {
-        var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) ?? URLComponents()
-        if components.scheme == "https" { components.scheme = "wss" }
-        else if components.scheme == "http" { components.scheme = "ws" }
-        components.path = "/api/websocket"
-        return components.url ?? baseURL
+        var components = URLComponents(url: baseURL.appendingPathComponent("api/websocket"), resolvingAgainstBaseURL: false)!
+        components.scheme = baseURL.scheme == "https" ? "wss" : "ws"
+        return components.url!
     }
 
     func start() {
-        guard !stopped else { return }
-        receiveTask?.cancel()
-        task?.cancel()
-        task = nil
-        subscriptions.removeAll()
-
-        Task { @MainActor in
-            await delegate?.realtime(didChange: .connecting)
-        }
-        let request = URLRequest(url: websocketURL)
-        let newTask = session.webSocketTask(with: request)
-        task = newTask
-        newTask.resume()
-        receiveTask?.cancel()
-        let d = delegate
-        let taskRef = newTask
+        guard receiveTask == nil else { return }
+        let currentGeneration = generation
         receiveTask = Task { [weak self] in
-            await self?.runReceiveLoop(task: taskRef, delegate: d)
+            await self?.run(generation: currentGeneration)
         }
     }
 
     func stop() {
-        stopped = true
+        generation = UUID()
         receiveTask?.cancel()
         receiveTask = nil
-        task?.cancel(with: .goingAway, reason: nil)
-        task = nil
-        subscriptions.removeAll()
-        Task { @MainActor in
-            await delegate?.realtime(didChange: .disconnected)
-        }
+        socket?.cancel(with: .goingAway, reason: nil)
+        socket = nil
+        // The owner updates its UI immediately; a stopped connection emits no late callbacks.
     }
 
-    // MARK: - Receive loop
+    private func isCurrent(_ expected: UUID) -> Bool {
+        generation == expected && !Task.isCancelled
+    }
 
-    private func runReceiveLoop(task: URLSessionWebSocketTask, delegate: (any HAWebsocketDelegate)?) async {
-        var authenticated = false
-        while !stopped {
-            let message: URLSessionWebSocketTask.Message
+    private func report(_ status: HARealtimeStatus, generation: UUID) async {
+        guard isCurrent(generation) else { return }
+        await delegate?.realtime(didChange: status)
+    }
+
+    private func run(generation: UUID) async {
+        var attempts = 0
+        while isCurrent(generation) {
+            await report(.connecting, generation: generation)
+            guard isCurrent(generation) else { return }
+            let task = session.webSocketTask(with: websocketURL)
+            socket = task
+            task.resume()
+            var handshake = HAWebSocketHandshake(subscriptionID: 1)
             do {
-                message = try await task.receive()
-            } catch {
-                if !stopped { await scheduleReconnect() }
-                return
-            }
-
-            let data: Data
-            switch message {
-            case .data(let d): data = d
-            case .string(let s): data = Data(s.utf8)
-            @unknown default: continue
-            }
-
-            await handleMessage(data, task: task, authenticated: &authenticated, delegate: delegate)
-        }
-    }
-
-    private func handleMessage(_ data: Data, task: URLSessionWebSocketTask, authenticated: inout Bool, delegate: (any HAWebsocketDelegate)?) async {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return
-        }
-
-        if let type = json["type"] as? String {
-            switch type {
-            case "auth_required":
-                await sendAuth(task: task)
-                Task { @MainActor in await delegate?.realtime(didChange: .authenticating) }
-                return
-            case "auth_ok":
-                authenticated = true
-                Task { @MainActor in await delegate?.realtime(didChange: .subscribing) }
-                await subscribeToStateChanges()
-                Task { @MainActor in await delegate?.realtime(didChange: .connected) }
-                reconnectAttempt = 0
-                return
-            case "auth_invalid":
-                Task { @MainActor in await delegate?.realtime(didChange: .failed("Authentication failed")) }
-                return
-            default:
-                break
-            }
-        }
-
-        if authenticated, let eventType = json["type"] as? String, eventType == "event" {
-            let event = json["event"] as? [String: Any]
-            let eventData = event?["data"] as? [String: Any]
-            if let eventType = eventData?["event_type"] as? String, eventType == "state_changed",
-               let new = eventData?["new_state"] as? [String: Any],
-               let entityID = new["entity_id"] as? String,
-               let payload = try? JSONSerialization.data(withJSONObject: new),
-               let entity = try? JSONDecoder().decode(HAEntity.self, from: payload) {
-                Task { @MainActor in
-                    await delegate?.realtime(didReceive: .stateChanged(entityID: entityID, entity: entity))
+                while isCurrent(generation) {
+                    let incoming = try await task.receive()
+                    guard isCurrent(generation) else { return }
+                    let data: Data
+                    switch incoming {
+                    case .data(let value): data = value
+                    case .string(let value): data = Data(value.utf8)
+                    @unknown default: continue
+                    }
+                    guard let message = try? JSONDecoder().decode(HAWebSocketMessage.self, from: data) else { continue }
+                    if let action = handshake.receive(message) {
+                        switch action {
+                        case .authenticate:
+                            await report(.authenticating, generation: generation)
+                            guard isCurrent(generation) else { return }
+                            try await send(["type": "auth", "access_token": token], on: task)
+                        case .subscribe:
+                            await report(.subscribing, generation: generation)
+                            guard isCurrent(generation) else { return }
+                            try await send(["id": 1, "type": "subscribe_events", "event_type": "state_changed"], on: task)
+                        case .connected:
+                            attempts = 0
+                            await report(.connected, generation: generation)
+                        case .failed(let message):
+                            task.cancel(with: .policyViolation, reason: nil)
+                            await report(.failed(message), generation: generation)
+                            if isCurrent(generation) { receiveTask = nil; socket = nil }
+                            return
+                        }
+                    }
+                    if handshake.isConnected, let event = message.stateChange, isCurrent(generation) {
+                        await delegate?.realtime(didReceive: event)
+                    }
                 }
+            } catch {
+                guard isCurrent(generation) else { return }
+                task.cancel(with: .goingAway, reason: nil)
+                socket = nil
+                attempts += 1
+                guard attempts <= 8 else {
+                    await report(.failed("Reconnect limit reached. Refresh to retry."), generation: generation)
+                    if isCurrent(generation) { receiveTask = nil }
+                    return
+                }
+                await report(.connecting, generation: generation)
+                do {
+                    try await Task.sleep(for: .seconds(min(pow(2, Double(attempts - 1)), 30)))
+                } catch { return }
             }
         }
     }
 
-    // MARK: - Senders
-
-    private func sendAuth(task: URLSessionWebSocketTask) async {
-        let payload: [String: Any] = ["type": "auth", "access_token": token]
-        await sendJSON(payload, task: task)
-    }
-
-    private func subscribeToStateChanges() async {
-        guard let task else { return }
-        let id = nextID
-        nextID += 1
-        let payload: [String: Any] = [
-            "id": id,
-            "type": "subscribe_events",
-            "event_type": "state_changed",
-        ]
-        await sendJSON(payload, task: task)
-        subscriptions.insert("state_changed")
-    }
-
-    private func sendJSON(_ payload: [String: Any], task: URLSessionWebSocketTask) async {
-        guard let data = try? JSONSerialization.data(withJSONObject: payload) else {
-            return
-        }
-        try? await task.send(.data(data))
-    }
-
-    // MARK: - Reconnect
-
-    private func scheduleReconnect() async {
-        guard !stopped else { return }
-        reconnectAttempt += 1
-        let attempt = reconnectAttempt
-        if attempt > 8 {
-            Task { @MainActor in
-                await delegate?.realtime(didChange: .failed("Reconnect limit reached"))
-            }
-            return
-        }
-        let delay = min(pow(2.0, Double(attempt - 1)), 30.0)
-        let nanos = UInt64(delay * 1_000_000_000)
-        try? await Task.sleep(nanoseconds: nanos)
-        guard !stopped else { return }
-        start()
+    private func send(_ payload: [String: Any], on task: URLSessionWebSocketTask) async throws {
+        let data = try JSONSerialization.data(withJSONObject: payload)
+        try await task.send(.string(String(decoding: data, as: UTF8.self)))
     }
 }
