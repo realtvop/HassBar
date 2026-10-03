@@ -16,7 +16,8 @@ nonisolated struct Favorites: Equatable, Sendable {
     var entityIDs: [String]
 
     init(entityIDs: [String] = []) {
-        self.entityIDs = entityIDs
+        var seen: Set<String> = []
+        self.entityIDs = entityIDs.filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 
     func contains(_ id: String) -> Bool {
@@ -55,7 +56,7 @@ nonisolated struct Favorites: Equatable, Sendable {
     mutating func move(_ id: String, to destination: Int) {
         guard let from = entityIDs.firstIndex(of: id) else { return }
         let source = IndexSet(integer: from)
-        entityIDs.move(fromOffsets: source, toOffset: destination)
+        entityIDs.move(fromOffsets: source, toOffset: min(max(destination, 0), entityIDs.count))
     }
 }
 
@@ -66,7 +67,7 @@ nonisolated extension Favorites: RawRepresentable {
               let ids = try? JSONDecoder().decode([String].self, from: data) else {
             return nil
         }
-        self.entityIDs = ids
+        self.init(entityIDs: ids)
     }
 
     public var rawValue: String {

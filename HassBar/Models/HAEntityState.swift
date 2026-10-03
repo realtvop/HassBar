@@ -69,6 +69,7 @@ nonisolated struct HAAttributes: Decodable, Equatable, Sendable {
     var targetTemperatureStep: Double?
     var temperatureUnit: String?
     var hvacModes: [String]?
+    var supportedFeatures: Int?
 
     enum CodingKeys: String, CodingKey {
         case friendlyName = "friendly_name"
@@ -88,6 +89,7 @@ nonisolated struct HAAttributes: Decodable, Equatable, Sendable {
         case targetTemperatureStep = "target_temp_step"
         case temperatureUnit = "temperature_unit"
         case hvacModes = "hvac_modes"
+        case supportedFeatures = "supported_features"
     }
 
     init(
@@ -107,7 +109,8 @@ nonisolated struct HAAttributes: Decodable, Equatable, Sendable {
         maxTemperature: Double? = nil,
         targetTemperatureStep: Double? = nil,
         temperatureUnit: String? = nil,
-        hvacModes: [String]? = nil
+        hvacModes: [String]? = nil,
+        supportedFeatures: Int? = nil
     ) {
         self.friendlyName = friendlyName
         self.unitOfMeasurement = unitOfMeasurement
@@ -126,12 +129,13 @@ nonisolated struct HAAttributes: Decodable, Equatable, Sendable {
         self.targetTemperatureStep = targetTemperatureStep
         self.temperatureUnit = temperatureUnit
         self.hvacModes = hvacModes
+        self.supportedFeatures = supportedFeatures
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        friendlyName = try container.decodeIfPresent(String.self, forKey: .friendlyName)
-        unitOfMeasurement = try container.decodeIfPresent(String.self, forKey: .unitOfMeasurement)
+        friendlyName = try? container.decodeIfPresent(String.self, forKey: .friendlyName)
+        unitOfMeasurement = try? container.decodeIfPresent(String.self, forKey: .unitOfMeasurement)
         brightness = container.decodeLossyIntIfPresent(forKey: .brightness)
         colorTempKelvin = container.decodeLossyIntIfPresent(forKey: .colorTempKelvin)
         colorTempMireds = container.decodeLossyIntIfPresent(forKey: .colorTempMireds)
@@ -147,6 +151,7 @@ nonisolated struct HAAttributes: Decodable, Equatable, Sendable {
         targetTemperatureStep = container.decodeLossyDoubleIfPresent(forKey: .targetTemperatureStep)
         temperatureUnit = try? container.decodeIfPresent(String.self, forKey: .temperatureUnit)
         hvacModes = try? container.decodeIfPresent([String].self, forKey: .hvacModes)
+        supportedFeatures = container.decodeLossyIntIfPresent(forKey: .supportedFeatures)
     }
 }
 
@@ -156,24 +161,25 @@ nonisolated private extension KeyedDecodingContainer where K == HAAttributes.Cod
             return value
         }
         if let value = try? decodeIfPresent(Double.self, forKey: key) {
-            return Int(value.rounded())
+            return value.isFinite ? Int(exactly: value.rounded()) : nil
         }
         if let value = try? decodeIfPresent(String.self, forKey: key),
            let number = Double(value) {
-            return Int(number.rounded())
+            return number.isFinite ? Int(exactly: number.rounded()) : nil
         }
         return nil
     }
 
     func decodeLossyDoubleIfPresent(forKey key: K) -> Double? {
         if let value = try? decodeIfPresent(Double.self, forKey: key) {
-            return value
+            return value.isFinite ? value : nil
         }
         if let value = try? decodeIfPresent(Int.self, forKey: key) {
             return Double(value)
         }
         if let value = try? decodeIfPresent(String.self, forKey: key) {
-            return Double(value)
+            guard let number = Double(value), number.isFinite else { return nil }
+            return number
         }
         return nil
     }
@@ -215,7 +221,10 @@ nonisolated struct HAEntity: Decodable, Equatable, Identifiable, Sendable {
     }
 
     /// Friendly name from attributes if present, otherwise the entity id.
-    var friendlyName: String { attributes.friendlyName ?? entityID }
+    var friendlyName: String {
+        guard let name = attributes.friendlyName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return entityID }
+        return name
+    }
 
     /// State value with unit appended when available, used for compact display.
     var displayState: String {
@@ -227,7 +236,7 @@ nonisolated struct HAEntity: Decodable, Equatable, Identifiable, Sendable {
     }
 
     var isAvailable: Bool {
-        state != "unavailable" && state != "unknown"
+        state != "unavailable" && (state != "unknown" || domain == "scene" || domain == "script")
     }
 
     // MARK: - Light helpers
@@ -237,12 +246,16 @@ nonisolated struct HAEntity: Decodable, Equatable, Identifiable, Sendable {
     /// Brightness as a percentage (0-100), or `nil` when not reported.
     var brightnessPercent: Int? {
         guard let brightness = attributes.brightness else { return nil }
-        return Int((Double(brightness) / 255.0 * 100).rounded())
+        return Int((Double(min(max(brightness, 0), 255)) / 255.0 * 100).rounded())
     }
 
     /// Whether the light reports brightness support.
     var supportsBrightness: Bool {
-        isLight && attributes.brightness != nil
+        guard isLight else { return false }
+        if let modes = attributes.supportedColorModes {
+            return modes.contains { ["brightness", "color_temp", "hs", "xy", "rgb", "rgbw", "rgbww", "white"].contains($0) }
+        }
+        return attributes.brightness != nil
     }
 
     /// Whether the light reports color temperature support.
@@ -257,6 +270,7 @@ nonisolated struct HAEntity: Decodable, Equatable, Identifiable, Sendable {
     /// Effective color temperature range in Kelvin.
     var colorTempRange: ClosedRange<Int>? {
         if let min = attributes.minColorTempKelvin, let max = attributes.maxColorTempKelvin {
+            guard min > 0, min < max, max <= 40_000 else { return nil }
             return min...max
         }
         guard
@@ -267,11 +281,12 @@ nonisolated struct HAEntity: Decodable, Equatable, Identifiable, Sendable {
         else {
             return nil
         }
+        guard warmKelvin != coolKelvin else { return nil }
         return min(warmKelvin, coolKelvin)...max(warmKelvin, coolKelvin)
     }
 
     var colorTempKelvin: Int? {
-        if let kelvin = attributes.colorTempKelvin {
+        if let kelvin = attributes.colorTempKelvin, (1...40_000).contains(kelvin) {
             return kelvin
         }
         guard let mireds = attributes.colorTempMireds else { return nil }
@@ -296,17 +311,28 @@ nonisolated struct HAEntity: Decodable, Equatable, Identifiable, Sendable {
     }
 
     var climateTemperatureStep: Double {
-        if let step = attributes.targetTemperatureStep, step > 0 {
+        if let step = attributes.targetTemperatureStep, step.isFinite, step > 0 {
             return step
         }
         return climateTemperatureUnit == "°F" ? 1 : 0.5
     }
 
     var climateTemperatureRange: ClosedRange<Double>? {
-        guard let min = attributes.minTemperature, let max = attributes.maxTemperature, min < max else {
+        guard let min = attributes.minTemperature, let max = attributes.maxTemperature, min.isFinite, max.isFinite, min < max else {
             return nil
         }
         return min...max
+    }
+
+    /// HA's single-temperature control is separate from its dual-setpoint range mode.
+    var supportsClimateTargetTemperature: Bool {
+        guard isClimate else { return false }
+        return supportsFeature(1) && climateTemperatureRange != nil
+    }
+
+    func supportsFeature(_ flag: Int) -> Bool {
+        guard let features = attributes.supportedFeatures else { return true }
+        return features & flag != 0
     }
 
     var climateTargetTemperature: Double? {
@@ -318,7 +344,8 @@ nonisolated struct HAEntity: Decodable, Equatable, Identifiable, Sendable {
     }
 
     var climateHVACModes: [String] {
-        attributes.hvacModes ?? []
+        var seen: Set<String> = []
+        return (attributes.hvacModes ?? []).filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 }
 

@@ -14,12 +14,14 @@ enum GradientSliderTrackStyle {
 
 struct GradientSlider: View {
     @Binding var value: Double
+    @Environment(\.isEnabled) private var isEnabled
     @State private var scrollCommitTask: Task<Void, Never>?
 
     let range: ClosedRange<Double>
     let step: Double
     let trackStyle: GradientSliderTrackStyle
     let onCommit: (Double) async -> Void
+    var onEditingChanged: (Bool) -> Void = { _ in }
 
     private let thumbSize: CGFloat = 13
     private let trackHeight: CGFloat = 6
@@ -48,22 +50,37 @@ struct GradientSlider: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
             .overlay {
-                SliderEventView { locationX in
+                SliderEventView(isEnabled: isEnabled) { locationX in
+                    onEditingChanged(true)
                     updateValue(from: locationX, trackWidth: trackWidth)
                 } onScroll: { delta in
+                    onEditingChanged(true)
                     updateValue(byScrollDelta: delta)
                     scheduleScrollCommit()
                 } onCommit: {
                     scrollCommitTask?.cancel()
                     commitCurrentValue()
+                } onKeyAdjustment: { direction in
+                    adjustValue(direction: direction)
                 }
             }
         }
         .frame(height: 18)
         .accessibilityElement()
-        .accessibilityValue("\(Int(value))")
+        .accessibilityValue(value.formatted(.number.precision(.fractionLength(0...1))))
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: adjustValue(direction: 1)
+            case .decrement: adjustValue(direction: -1)
+            @unknown default: break
+            }
+        }
+        .onChange(of: isEnabled) { _, enabled in
+            if !enabled { scrollCommitTask?.cancel(); onEditingChanged(false) }
+        }
         .onDisappear {
             scrollCommitTask?.cancel()
+            onEditingChanged(false)
         }
     }
 
@@ -76,6 +93,10 @@ struct GradientSlider: View {
     @ViewBuilder
     private func track(progress: CGFloat, trackWidth: CGFloat) -> some View {
         ZStack(alignment: .leading) {
+            Capsule()
+                .fill(Color(nsColor: .separatorColor).opacity(0.4))
+                .frame(width: trackWidth, height: trackHeight)
+                .padding(.leading, thumbSize / 2)
             switch trackStyle {
             case .fullGradient(let colors):
                 Capsule()
@@ -110,8 +131,7 @@ struct GradientSlider: View {
         }
 
         let rawValue = range.lowerBound + Double(clampedX / trackWidth) * (range.upperBound - range.lowerBound)
-        let steppedValue = range.lowerBound + ((rawValue - range.lowerBound) / step).rounded() * step
-        value = min(max(steppedValue, range.lowerBound), range.upperBound)
+        value = SliderValueScale.quantized(rawValue, range: range, step: step)
     }
 
     private func updateValue(byScrollDelta delta: CGFloat) {
@@ -120,8 +140,7 @@ struct GradientSlider: View {
         let valueRange = range.upperBound - range.lowerBound
         let scrollStep = max(step, valueRange / 100)
         let rawValue = value + Double(delta) * scrollStep * scrollSensitivity
-        let steppedValue = range.lowerBound + ((rawValue - range.lowerBound) / step).rounded() * step
-        value = min(max(steppedValue, range.lowerBound), range.upperBound)
+        value = SliderValueScale.quantized(rawValue, range: range, step: step)
     }
 
     private func scheduleScrollCommit() {
@@ -130,25 +149,39 @@ struct GradientSlider: View {
         scrollCommitTask = Task {
             try? await Task.sleep(for: scrollCommitDelay)
             guard !Task.isCancelled else { return }
+            onEditingChanged(false)
             await onCommit(committedValue)
         }
     }
 
+    private func adjustValue(direction: Double) {
+        guard isEnabled else { return }
+        value = SliderValueScale.quantized(value + direction * step, range: range, step: step)
+        commitCurrentValue()
+    }
+
     private func commitCurrentValue() {
+        guard isEnabled else { return }
+        onEditingChanged(false)
         let committedValue = value
         Task {
+            onEditingChanged(false)
             await onCommit(committedValue)
         }
     }
 }
 
 private struct SliderEventView: NSViewRepresentable {
+    let isEnabled: Bool
     let onDrag: (CGFloat) -> Void
     let onScroll: (CGFloat) -> Void
     let onCommit: () -> Void
+    let onKeyAdjustment: (Double) -> Void
 
     func makeNSView(context: Context) -> SliderEventCatcherView {
         let view = SliderEventCatcherView()
+        view.isEnabled = isEnabled
+        view.onKeyAdjustment = onKeyAdjustment
         view.onDrag = onDrag
         view.onScroll = onScroll
         view.onCommit = onCommit
@@ -156,19 +189,25 @@ private struct SliderEventView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: SliderEventCatcherView, context: Context) {
+        nsView.isEnabled = isEnabled
+        nsView.onKeyAdjustment = onKeyAdjustment
         nsView.onDrag = onDrag
         nsView.onScroll = onScroll
         nsView.onCommit = onCommit
     }
 
     final class SliderEventCatcherView: NSView {
+        var isEnabled = true
+        var onKeyAdjustment: ((Double) -> Void)?
         var onDrag: ((CGFloat) -> Void)?
         var onScroll: ((CGFloat) -> Void)?
         var onCommit: (() -> Void)?
 
-        override var acceptsFirstResponder: Bool { true }
+        override var acceptsFirstResponder: Bool { isEnabled }
 
         override func mouseDown(with event: NSEvent) {
+            guard isEnabled else { return }
+            window?.makeFirstResponder(self)
             handleDrag(event)
         }
 
@@ -177,11 +216,13 @@ private struct SliderEventView: NSViewRepresentable {
         }
 
         override func mouseUp(with event: NSEvent) {
+            guard isEnabled else { return }
             handleDrag(event)
             onCommit?()
         }
 
         override func scrollWheel(with event: NSEvent) {
+            guard isEnabled else { return }
             guard event.hasPreciseScrollingDeltas else {
                 super.scrollWheel(with: event)
                 return
@@ -202,7 +243,17 @@ private struct SliderEventView: NSViewRepresentable {
             }
         }
 
+        override func keyDown(with event: NSEvent) {
+            guard isEnabled else { return }
+            switch event.keyCode {
+            case 123, 125: onKeyAdjustment?(-1)
+            case 124, 126: onKeyAdjustment?(1)
+            default: super.keyDown(with: event)
+            }
+        }
+
         private func handleDrag(_ event: NSEvent) {
+            guard isEnabled else { return }
             let location = convert(event.locationInWindow, from: nil)
             onDrag?(location.x)
         }

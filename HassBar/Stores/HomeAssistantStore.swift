@@ -39,6 +39,8 @@ final class HomeAssistantStore: HAWebsocketDelegate {
 
     /// Entity ids with an in-flight service call.
     private(set) var pendingActions: Set<String> = []
+    private var actionIDs: [String: UUID] = [:]
+    private var actionServices: [String: String] = [:]
 
     /// Most recent per-entity service call error.
     private(set) var actionErrors: [String: HAError] = [:]
@@ -255,6 +257,8 @@ final class HomeAssistantStore: HAWebsocketDelegate {
         entities = [:]
         entityRevisions = [:]
         pendingActions = []
+        actionIDs = [:]
+        actionServices = [:]
         actionErrors = [:]
         lastError = nil
         lastUpdated = nil
@@ -265,26 +269,34 @@ final class HomeAssistantStore: HAWebsocketDelegate {
 
     func callService(domain: String, service: String, entityID: String, serviceData: [String: Any]? = nil) async {
         synchronizeConnection()
-        guard !pendingActions.contains(entityID) else { return }
+        let interruptsCover = domain == "cover" && service == "stop_cover" && actionServices[entityID] != "stop_cover"
+        guard !pendingActions.contains(entityID) || interruptsCover else { return }
         guard let connection = activeConnection else {
             actionErrors[entityID] = .missingToken
             return
         }
         let generation = connectionGeneration
         let client = makeClient(connection)
+        let actionID = UUID()
+        actionIDs[entityID] = actionID
+        actionServices[entityID] = service
         pendingActions.insert(entityID)
         actionErrors[entityID] = nil
         let previous = entities[entityID]
         defer {
-            if isCurrent(generation, connection: connection) { pendingActions.remove(entityID) }
+            if isCurrent(generation, connection: connection), actionIDs[entityID] == actionID {
+                pendingActions.remove(entityID)
+                actionIDs[entityID] = nil
+                actionServices[entityID] = nil
+            }
         }
         do {
             try await client.callService(domain: domain, service: service, entityID: entityID, serviceData: serviceData)
-            guard isCurrent(generation, connection: connection), !Task.isCancelled else { return }
+            guard isCurrent(generation, connection: connection), actionIDs[entityID] == actionID, !Task.isCancelled else { return }
             await pollForStateChange(client: client, entityID: entityID, previous: previous,
-                                     connection: connection, generation: generation)
+                                     connection: connection, generation: generation, actionID: actionID)
         } catch {
-            guard isCurrent(generation, connection: connection), !Task.isCancelled, !(error is CancellationError) else { return }
+            guard isCurrent(generation, connection: connection), actionIDs[entityID] == actionID, !Task.isCancelled, !(error is CancellationError) else { return }
             actionErrors[entityID] = (error as? HAError) ?? .transport(error.localizedDescription)
         }
     }
@@ -304,7 +316,9 @@ final class HomeAssistantStore: HAWebsocketDelegate {
 
     /// Sets a light's color temperature in Kelvin.
     func setColorTemperature(entityID: String, kelvin: Int) async {
-        await callService(domain: "light", service: "turn_on", entityID: entityID, serviceData: ["color_temp_kelvin": kelvin])
+        let range = entities[entityID]?.colorTempRange ?? 1...40_000
+        let clamped = min(max(kelvin, range.lowerBound), range.upperBound)
+        await callService(domain: "light", service: "turn_on", entityID: entityID, serviceData: ["color_temp_kelvin": clamped])
     }
 
     // MARK: - Climate controls
@@ -319,11 +333,16 @@ final class HomeAssistantStore: HAWebsocketDelegate {
     }
 
     func setClimateTemperature(entityID: String, temperature: Double) async {
+        guard temperature.isFinite else { return }
+        let value: Double
+        if let entity = entities[entityID], let range = entity.climateTemperatureRange {
+            value = SliderValueScale.quantized(temperature, range: range, step: entity.climateTemperatureStep)
+        } else { value = temperature }
         await callService(
             domain: "climate",
             service: "set_temperature",
             entityID: entityID,
-            serviceData: ["temperature": temperature]
+            serviceData: ["temperature": value]
         )
     }
 
@@ -335,17 +354,18 @@ final class HomeAssistantStore: HAWebsocketDelegate {
         entityID: String,
         previous: HAEntity?,
         connection: HAConnection,
-        generation: UUID
+        generation: UUID,
+        actionID: UUID
     ) async {
         var delay = actionPollDelay
         for _ in 0..<6 {
-            guard isCurrent(generation, connection: connection), !Task.isCancelled else { return }
+            guard isCurrent(generation, connection: connection), actionIDs[entityID] == actionID, !Task.isCancelled else { return }
             if let current = entities[entityID], hasChanged(current, from: previous) { return }
             do {
                 try await Task.sleep(for: delay)
                 let revision = stateRevision
                 let updated = try await client.fetchEntity(entityID: entityID)
-                guard isCurrent(generation, connection: connection), !Task.isCancelled else { return }
+                guard isCurrent(generation, connection: connection), actionIDs[entityID] == actionID, !Task.isCancelled else { return }
                 // A realtime update received during this request takes precedence over its response.
                 if (entityRevisions[entityID] ?? 0) <= revision {
                     entities[entityID] = updated

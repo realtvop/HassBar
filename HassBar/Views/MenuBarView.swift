@@ -351,6 +351,14 @@ private struct FavoriteRow: View {
 
                 Spacer()
 
+                ForEach(EntityActionMapping.displayActions(for: entity).dropFirst()) { action in
+                    Button(action.title) {
+                        Task { await store.callService(domain: action.domain, service: action.service, entityID: entity.id) }
+                    }
+                    .controlSize(.small)
+                    .disabled(!entity.isAvailable || (store.pendingActions.contains(entity.id) && action.service != "stop_cover"))
+                    .accessibilityLabel("\(action.title) \(store.displayName(for: entity))")
+                }
                 if canExpand {
                     disclosureIndicator
                 }
@@ -424,11 +432,11 @@ private struct FavoriteRow: View {
     }
 
     private var canExpandLight: Bool {
-        entity.isLight && entity.state == "on" && (entity.supportsBrightness || entity.supportsColorTemperature)
+        entity.isLight && entity.isAvailable && (entity.supportsBrightness || entity.supportsColorTemperature)
     }
 
     private var canExpandClimate: Bool {
-        entity.isClimate && entity.isAvailable && (!entity.climateHVACModes.isEmpty || entity.climateTemperatureRange != nil)
+        entity.isClimate && entity.isAvailable && (!entity.climateHVACModes.isEmpty || entity.supportsClimateTargetTemperature)
     }
 
     private var compactLightDetails: [String] {

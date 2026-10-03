@@ -13,6 +13,8 @@ struct LightControlsView: View {
 
     @State private var brightnessValue: Double = 0
     @State private var colorTempValue: Double = 0
+    @State private var editingBrightness = false
+    @State private var editingColorTemperature = false
 
     var body: some View {
         VStack(spacing: 4) {
@@ -28,7 +30,11 @@ struct LightControlsView: View {
         .padding(.bottom, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .clipped()
+        .disabled(store.pendingActions.contains(entity.id) || !entity.isAvailable)
         .onAppear { syncSliderValues() }
+        .onChange(of: store.pendingActions.contains(entity.id)) { _, pending in
+            if !pending { syncSliderValues() }
+        }
         .onChange(of: entity.id) { syncSliderValues() }
         .onChange(of: entity.attributes.brightness) { syncBrightness() }
         .onChange(of: entity.attributes.colorTempKelvin) { syncColorTemperature() }
@@ -52,8 +58,10 @@ struct LightControlsView: View {
                 trackStyle: .valueFill(brightnessColor),
                 onCommit: { value in
                     await store.setBrightness(entityID: entity.id, percent: Int(value.rounded()))
-                }
+                },
+                onEditingChanged: { editingBrightness = $0 }
             )
+            .accessibilityLabel("Brightness")
             Text("\(Int(brightnessValue.rounded()))%")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -74,8 +82,10 @@ struct LightControlsView: View {
                 trackStyle: .fullGradient(colorTemperatureColors(for: range)),
                 onCommit: { value in
                     await store.setColorTemperature(entityID: entity.id, kelvin: Int(value.rounded()))
-                }
+                },
+                onEditingChanged: { editingColorTemperature = $0 }
             )
+            .accessibilityLabel("Color temperature")
             Text("\(Int(colorTempValue))K")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -110,14 +120,16 @@ struct LightControlsView: View {
     }
 
     private func syncBrightness() {
+        guard !editingBrightness, !store.pendingActions.contains(entity.id) else { return }
         brightnessValue = Double(entity.brightnessPercent ?? 100)
     }
 
     private func syncColorTemperature() {
+        guard !editingColorTemperature, !store.pendingActions.contains(entity.id) else { return }
         if let kelvin = entity.colorTempKelvin {
             colorTempValue = Double(clampedColorTemperature(kelvin))
         } else if let range = entity.colorTempRange {
-            colorTempValue = Double((range.lowerBound + range.upperBound) / 2)
+            colorTempValue = Double(range.lowerBound + (range.upperBound - range.lowerBound) / 2)
         } else {
             colorTempValue = 4000
         }

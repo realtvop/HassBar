@@ -135,6 +135,25 @@ final class HomeAssistantStoreTests: XCTestCase {
         XCTAssertFalse(store.pendingActions.contains("light.a"))
     }
 
+    func testCoverStopCanInterruptPendingOpenWithoutOldActionWritingBack() async {
+        let (store, fake) = configuredStore(fetch: .success([entity("cover.a", "closed")]))
+        await store.refresh()
+        var resume: CheckedContinuation<Void, Error>?
+        fake.callHandler = {
+            if fake.callInvocations.count == 1 {
+                try await withCheckedThrowingContinuation { resume = $0 }
+            }
+        }
+        let opening = Task { await store.callService(domain: "cover", service: "open_cover", entityID: "cover.a") }
+        while resume == nil { await Task.yield() }
+        await store.callService(domain: "cover", service: "stop_cover", entityID: "cover.a")
+        XCTAssertEqual(fake.callInvocations.map(\.service), ["open_cover", "stop_cover"])
+        XCTAssertFalse(store.pendingActions.contains("cover.a"))
+        resume?.resume(throwing: HAError.httpStatus(500))
+        await opening.value
+        XCTAssertNil(store.actionErrors["cover.a"])
+    }
+
     func testAttributeOnlyChangeEndsActionPolling() async {
         let before = HAEntity(entityID: "light.a", state: "on", attributes: HAAttributes(friendlyName: nil, unitOfMeasurement: nil, brightness: 10))
         let after = HAEntity(entityID: "light.a", state: "on", attributes: HAAttributes(friendlyName: nil, unitOfMeasurement: nil, brightness: 128))

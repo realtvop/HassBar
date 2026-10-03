@@ -12,13 +12,14 @@ struct ClimateControlsView: View {
     let store: HomeAssistantStore
 
     @State private var targetTemperature: Double = 0
+    @State private var editingTemperature = false
 
     var body: some View {
         VStack(spacing: 8) {
             if !hvacModes.isEmpty {
                 hvacModePicker
             }
-            if let range = entity.climateTemperatureRange {
+            if entity.supportsClimateTargetTemperature, let range = entity.climateTemperatureRange {
                 temperatureSlider(range: range)
             }
         }
@@ -27,7 +28,11 @@ struct ClimateControlsView: View {
         .padding(.bottom, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .clipped()
+        .disabled(store.pendingActions.contains(entity.id) || !entity.isAvailable)
         .onAppear { syncTargetTemperature() }
+        .onChange(of: store.pendingActions.contains(entity.id)) { _, pending in
+            if !pending { syncTargetTemperature() }
+        }
         .onChange(of: entity.id) { syncTargetTemperature() }
         .onChange(of: entity.attributes.targetTemperature) { syncTargetTemperature() }
         .onChange(of: entity.attributes.minTemperature) { syncTargetTemperature() }
@@ -56,6 +61,7 @@ struct ClimateControlsView: View {
                 .foregroundStyle(entity.state == mode ? Color.accentColor : Color.secondary)
                 .contentShape(RoundedRectangle(cornerRadius: 5))
                 .help(label(for: mode))
+                .accessibilityLabel(label(for: mode))
             }
             Spacer(minLength: 0)
         }
@@ -74,8 +80,10 @@ struct ClimateControlsView: View {
                 trackStyle: .fullGradient([.blue.opacity(0.8), .cyan.opacity(0.75), .orange.opacity(0.9)]),
                 onCommit: { value in
                     await store.setClimateTemperature(entityID: entity.id, temperature: roundedTemperature(value))
-                }
+                },
+                onEditingChanged: { editingTemperature = $0 }
             )
+            .accessibilityLabel("Target temperature")
             Text(temperatureText(targetTemperature))
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -88,6 +96,7 @@ struct ClimateControlsView: View {
     }
 
     private func syncTargetTemperature() {
+        guard !editingTemperature, !store.pendingActions.contains(entity.id) else { return }
         if let temperature = entity.climateTargetTemperature {
             targetTemperature = clampedTemperature(temperature)
         } else if let range = entity.climateTemperatureRange {
@@ -101,9 +110,8 @@ struct ClimateControlsView: View {
     }
 
     private func roundedTemperature(_ temperature: Double) -> Double {
-        let step = entity.climateTemperatureStep
-        guard step > 0 else { return temperature }
-        return (temperature / step).rounded() * step
+        guard let range = entity.climateTemperatureRange else { return temperature }
+        return SliderValueScale.quantized(temperature, range: range, step: entity.climateTemperatureStep)
     }
 
     private func temperatureText(_ temperature: Double) -> String {
