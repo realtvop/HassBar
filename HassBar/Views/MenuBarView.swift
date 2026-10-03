@@ -30,6 +30,7 @@ struct MenuBarView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            connectionNotice
             content
             footer
         }
@@ -45,22 +46,26 @@ struct MenuBarView: View {
     private var header: some View {
         HStack(spacing: 8) {
             statusDot
-            statusText
+            statusText.lineLimit(1)
             Spacer()
             realtimeDot
             Button {
                 Task { await store.refresh() }
             } label: {
-                Image(systemName: "arrow.clockwise")
+                if store.isLoading { ProgressView().controlSize(.small) }
+                else { Image(systemName: "arrow.clockwise") }
             }
             .help("Refresh")
+            .accessibilityLabel("Refresh entities")
             .disabled(store.isLoading || !store.config.isConfigured)
             Button {
+                settingsTab = .connection
                 openSettings()
             } label: {
                 Image(systemName: "gearshape")
             }
             .help("Settings")
+            .accessibilityLabel("Connection settings")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -76,6 +81,7 @@ struct MenuBarView: View {
                     .fill(realtimeColor)
                     .frame(width: 7, height: 7)
                     .help(help)
+                    .accessibilityLabel(help)
             }
         }
     }
@@ -104,6 +110,7 @@ struct MenuBarView: View {
         Circle()
             .fill(statusColor)
             .frame(width: 8, height: 8)
+            .accessibilityHidden(true)
     }
 
     private var statusColor: Color {
@@ -141,6 +148,23 @@ struct MenuBarView: View {
         }
     }
 
+    @ViewBuilder
+    private var connectionNotice: some View {
+        if let error = store.lastError, !store.entities.isEmpty {
+            Label("\(error.userMessage) Showing saved states.", systemImage: "exclamationmark.triangle")
+                .font(.caption)
+                .foregroundStyle(.red)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+        } else if case .failed(let message) = store.realtimeStatus {
+            Text("Live updates unavailable: \(message)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+        }
+    }
+
     // MARK: - Content
 
     @ViewBuilder
@@ -149,17 +173,31 @@ struct MenuBarView: View {
             emptyState(
                 message: "Configure Home Assistant to get started.",
                 actionTitle: "Open Settings",
-                action: { openSettings() }
+                action: { settingsTab = .connection; openSettings() }
             )
+        } else if store.isLoading && store.entities.isEmpty {
+            ProgressView("Loading entities…")
+                .padding(28)
+                .frame(maxWidth: .infinity)
+        } else if let error = store.lastError, store.entities.isEmpty {
+            emptyState(message: error.userMessage, actionTitle: "Retry", action: {
+                Task { await store.refresh() }
+            })
         } else if store.favoriteRows.isEmpty {
             emptyState(
-                message: "No favorite entities selected.",
+                message: store.favorites.entityIDs.isEmpty ? "No favorite entities selected." : "Your saved favorites are not returned by this server.",
                 actionTitle: "Manage Entities",
                 action: manageEntities
             )
         } else {
             ScrollView {
                 VStack(spacing: 8) {
+                    if !store.missingFavoriteIDs.isEmpty {
+                        Button("\(store.missingFavoriteIDs.count) \(store.missingFavoriteIDs.count == 1 ? "missing favorite" : "missing favorites") · Manage…", action: manageEntities)
+                            .font(.caption)
+                            .buttonStyle(.borderless)
+                            .padding(.horizontal, 12)
+                    }
                     if !sensorRows.isEmpty {
                         SensorStatusSection(entities: sensorRows, store: store)
                     }
@@ -327,6 +365,7 @@ private struct FavoriteRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(store.displayName(for: entity))
                         .lineLimit(1)
+                        .help(store.displayName(for: entity))
                     HStack(spacing: 6) {
                         Text(EntityMenuStyle.statusText(for: entity))
                             .font(.caption)
@@ -341,11 +380,13 @@ private struct FavoriteRow: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        if let actionError = store.actionErrors[entity.id] {
-                            Text(Self.errorLabel(actionError))
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                        }
+                    }
+                    .lineLimit(1)
+                    if let actionError = store.actionErrors[entity.id] {
+                        Text(actionError.userMessage)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
 
@@ -402,16 +443,22 @@ private struct FavoriteRow: View {
             }
             .buttonStyle(.plain)
             .help(action.title)
+            .accessibilityLabel("\(action.title) \(store.displayName(for: entity))")
         } else {
             EntityIconBadge(entity: entity, customIconName: store.customIcon(for: entity.id), size: 28)
         }
     }
 
     private var disclosureIndicator: some View {
-        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .frame(width: 18)
+        Button(action: expand) {
+            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 22, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(isExpanded ? "Collapse" : "Expand") controls for \(store.displayName(for: entity))")
     }
 
     private var primaryAction: EntityAction? {
@@ -471,15 +518,6 @@ private struct FavoriteRow: View {
         return "\(number)\(entity.climateTemperatureUnit)"
     }
 
-    private static func errorLabel(_ error: HAError) -> String {
-        switch error {
-        case .invalidURL: return "Invalid server URL"
-        case .missingToken: return "No token"
-        case .httpStatus(let code): return "Failed (\(code))"
-        case .transport: return "Unreachable"
-        case .decoding, .invalidResponse: return "Error"
-        }
-    }
 
 }
 

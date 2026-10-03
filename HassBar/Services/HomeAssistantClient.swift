@@ -16,6 +16,21 @@ nonisolated enum HAError: Error, Equatable {
     case decoding
 }
 
+nonisolated extension HAError {
+    var userMessage: String {
+        switch self {
+        case .missingToken: return "Add an access token in Connection settings."
+        case .invalidURL: return "Check the server URL in Connection settings."
+        case .httpStatus(401), .httpStatus(403): return "Authentication failed. Check the access token."
+        case .httpStatus(404): return "Endpoint not found. Check the server URL."
+        case .httpStatus(let code): return "Server returned HTTP \(code)."
+        case .transport: return "Could not reach Home Assistant."
+        case .invalidResponse: return "Invalid response from Home Assistant."
+        case .decoding: return "Could not read the entity states."
+        }
+    }
+}
+
 /// Accepts an HTTP(S) server root or reverse-proxy prefix, without credentials or query data.
 nonisolated enum HABaseURL {
     static func parse(_ value: String) throws -> URL {
@@ -86,7 +101,7 @@ extension HomeAssistantCalling {
 /// Home Assistant REST client. Owns no SwiftUI/App state.
 ///
 /// Focused methods cover connection testing, state fetching, and service calls.
-/// WebSocket subscribe/unsubscribe is added in a later step.
+/// Realtime transport lives in `HomeAssistantWebSocket`.
 struct HomeAssistantClient: HomeAssistantCalling, Sendable {
     let connection: HAConnection
     let session: URLSession

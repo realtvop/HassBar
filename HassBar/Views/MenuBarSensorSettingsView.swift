@@ -41,6 +41,7 @@ struct MenuBarSensorSettingsView: View {
             optionsBar
             Divider()
             filterBar
+            EntityCacheStatusView(store: store)
             Divider()
             listContent
         }
@@ -111,6 +112,14 @@ struct MenuBarSensorSettingsView: View {
                 }
             }
 
+            if !store.missingMenuBarSensorIDs.isEmpty {
+                Section("Missing Menu Bar Sensors") {
+                    ForEach(store.missingMenuBarSensorIDs, id: \.self) { id in
+                        MissingEntityRow(entityID: id) { store.removeMenuBarSensor(id) }
+                    }
+                }
+            }
+
             Section("Available Sensors (\(filteredSensors.count))") {
                 if filteredSensors.isEmpty {
                     Text("No sensors match.")
@@ -134,12 +143,12 @@ struct MenuBarSensorSettingsView: View {
     }
 
     private var filteredSensors: [HAEntity] {
-        store.sensorEntitiesSorted.filter { entity in
-            guard !searchText.isEmpty else { return true }
-            let needle = searchText.lowercased()
-            return entity.entityID.lowercased().contains(needle)
-                || entity.friendlyName.lowercased().contains(needle)
-                || store.displayName(for: entity).lowercased().contains(needle)
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return store.sensorEntitiesSorted.filter { entity in
+            !store.menuBarSensors.contains(entity.id) && (query.isEmpty
+                || entity.entityID.localizedStandardContains(query)
+                || entity.friendlyName.localizedStandardContains(query)
+                || store.displayName(for: entity).localizedStandardContains(query))
         }
     }
 
@@ -186,6 +195,8 @@ private struct MenuBarSensorConfiguredRow: View {
                     .lineLimit(1)
                 HStack(spacing: 6) {
                     Text(row.entity.entityID)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text("·")
@@ -222,6 +233,7 @@ private struct MenuBarSensorConfiguredRow: View {
                 .buttonStyle(.plain)
                 .disabled(!showsIcon)
                 .help("Browse icons")
+                .accessibilityLabel("Choose icon for \(row.entity.friendlyName)")
                 .popover(isPresented: $showIconPicker) {
                     IconPickerPopover(selection: $iconName, isPresented: $showIconPicker)
                 }
@@ -236,6 +248,7 @@ private struct MenuBarSensorConfiguredRow: View {
             }
             .buttonStyle(.plain)
             .help("Remove from menu bar")
+            .accessibilityLabel("Remove \(row.entity.friendlyName) from menu bar")
 
             dragHandle
         }
@@ -271,6 +284,8 @@ private struct MenuBarSensorAvailableRow: View {
                     .lineLimit(1)
                 HStack(spacing: 6) {
                     Text(entity.entityID)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text("·")
@@ -292,7 +307,9 @@ private struct MenuBarSensorAvailableRow: View {
             }
             .buttonStyle(.plain)
             .disabled(isSelected)
+            .accessibilityElement(children: .ignore)
             .help(isSelected ? "Already shown in menu bar" : "Show in menu bar")
+            .accessibilityLabel("Show \(entity.friendlyName) in menu bar")
         }
         .padding(.vertical, 6)
         .background {

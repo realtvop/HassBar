@@ -12,7 +12,7 @@ struct EntitySelectionView: View {
     let store: HomeAssistantStore
 
     @State private var searchText: String = ""
-    @State private var selectedDomain: HADomain? = nil
+    @State private var selectedDomain: String? = nil
     @State private var draggedFavoriteID: String? = nil
 
     var body: some View {
@@ -44,6 +44,7 @@ struct EntitySelectionView: View {
     private var entityList: some View {
         VStack(spacing: 0) {
             filterBar
+            EntityCacheStatusView(store: store)
             Divider()
             listContent
         }
@@ -64,9 +65,9 @@ struct EntitySelectionView: View {
             .clipShape(RoundedRectangle(cornerRadius: 6))
 
             Picker("Domain", selection: $selectedDomain) {
-                Text("All Domains").tag(HADomain?.none)
-                ForEach(HADomain.allCases, id: \.self) { domain in
-                    Text(domain.rawValue).tag(HADomain?.some(domain))
+                Text("All Domains").tag(String?.none)
+                ForEach(Array(Set(store.entities.values.map(\.domain))).sorted(), id: \.self) { domain in
+                    Text(domain).tag(String?.some(domain))
                 }
             }
             .pickerStyle(.menu)
@@ -80,10 +81,17 @@ struct EntitySelectionView: View {
     private var listContent: some View {
         List {
             favoriteSections
+            if !store.missingFavoriteIDs.isEmpty {
+                Section("Missing Favorites") {
+                    ForEach(store.missingFavoriteIDs, id: \.self) { id in
+                        MissingEntityRow(entityID: id) { store.toggleFavorite(id) }
+                    }
+                }
+            }
 
-            Section("All Entities (\(filteredEntities.count))") {
+            Section("Available Entities (\(filteredEntities.count))") {
                 if filteredEntities.isEmpty {
-                    Text("No entities match.")
+                    Text(store.lastUpdated == nil ? "No entity data loaded yet." : searchText.isEmpty && selectedDomain == nil ? "All available entities are already favorited." : "No entities match your filters.")
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(filteredEntities) { entity in
@@ -159,28 +167,24 @@ struct EntitySelectionView: View {
     }
 
     private var favoriteSensorRows: [HAEntity] {
-        store.favoriteRows.filter(Self.isSensor)
+        store.favoriteRows.filter { Self.isSensor($0) && matchesFilters($0) }
     }
 
     private var favoriteDeviceRows: [HAEntity] {
-        store.favoriteRows.filter { !Self.isSensor($0) }
+        store.favoriteRows.filter { !Self.isSensor($0) && matchesFilters($0) }
     }
 
     private var filteredEntities: [HAEntity] {
-        store.allEntitiesSorted.filter { entity in
-            if let domain = selectedDomain, entity.domain != domain.rawValue {
-                return false
-            }
-            if !searchText.isEmpty {
-                let needle = searchText.lowercased()
-                if !entity.entityID.lowercased().contains(needle),
-                   !entity.friendlyName.lowercased().contains(needle),
-                   !store.displayName(for: entity).lowercased().contains(needle) {
-                    return false
-                }
-            }
-            return true
-        }
+        let favoriteIDs = Set(store.favorites.entityIDs)
+        return store.allEntitiesSorted.filter { !favoriteIDs.contains($0.id) && matchesFilters($0) }
+    }
+
+    private func matchesFilters(_ entity: HAEntity) -> Bool {
+        if let domain = selectedDomain, entity.domain != domain { return false }
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return query.isEmpty || entity.entityID.localizedStandardContains(query)
+            || entity.friendlyName.localizedStandardContains(query)
+            || store.displayName(for: entity).localizedStandardContains(query)
     }
 
     private func aliasBinding(for entityID: String) -> Binding<String> {
@@ -229,12 +233,14 @@ private struct EntityRow: View {
 
                     HStack(spacing: 6) {
                         Text(entity.entityID)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Text("·")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Text(entity.state)
+                        Text(entity.displayState)
                             .font(.caption)
                             .foregroundStyle(entity.isAvailable ? Color.secondary : Color.red)
                     }
@@ -243,6 +249,11 @@ private struct EntityRow: View {
                 Spacer()
             }
             .contentShape(Rectangle())
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { toggle() }
+            .accessibilityLabel("\(isFavorite ? "Remove favorite" : "Add favorite") \(entity.friendlyName)")
+            .help(entity.entityID)
             .onTapGesture(perform: toggle)
 
             TextField("Alias", text: $alias, prompt: Text("Alias"))
@@ -266,6 +277,7 @@ private struct EntityRow: View {
                 }
                 .buttonStyle(.plain)
                 .help("Browse icons")
+                .accessibilityLabel("Choose icon for \(entity.friendlyName)")
                 .popover(isPresented: $showIconPicker) {
                     IconPickerPopover(selection: $customIcon, isPresented: $showIconPicker)
                 }
@@ -343,7 +355,7 @@ private struct FavoriteDragPreview: View {
                     Text("·")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text(entity.state)
+                    Text(entity.displayState)
                         .font(.caption)
                         .foregroundStyle(entity.isAvailable ? Color.secondary : Color.red)
                 }

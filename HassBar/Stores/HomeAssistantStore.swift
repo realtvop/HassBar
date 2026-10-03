@@ -102,6 +102,20 @@ final class HomeAssistantStore: HAWebsocketDelegate {
         }
     }
 
+    var missingFavoriteIDs: [String] {
+        guard lastUpdated != nil else { return [] }
+        return favorites.entityIDs.filter { entities[$0] == nil }
+    }
+
+    var missingMenuBarSensorIDs: [String] {
+        guard lastUpdated != nil else { return [] }
+        return menuBarSensors.items.map(\.entityID).filter { entities[$0] == nil }
+    }
+
+    func testConnection(_ connection: HAConnection) async throws {
+        try await makeClient(connection).testConnection()
+    }
+
     var sensorEntitiesSorted: [HAEntity] {
         allEntitiesSorted.filter(Self.isSensor)
     }

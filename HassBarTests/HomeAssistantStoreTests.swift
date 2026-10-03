@@ -175,6 +175,28 @@ final class HomeAssistantStoreTests: XCTestCase {
         XCTAssertEqual(store.lastError, .httpStatus(503))
     }
 
+    func testMissingSelectionsRemainManageableAndConnectionTestUsesInjectedClient() async {
+        let (store, fake) = configuredStore(fetch: .success([entity("sensor.present", "21")]))
+        store.config.favorites = Favorites(entityIDs: ["sensor.present", "light.removed"])
+        store.config.menuBarSensors = MenuBarSensors(items: [MenuBarSensorItem(entityID: "sensor.removed")])
+        store.reloadConfiguration()
+        XCTAssertTrue(store.missingFavoriteIDs.isEmpty)
+        await store.refresh()
+        XCTAssertEqual(store.missingFavoriteIDs, ["light.removed"])
+        XCTAssertEqual(store.missingMenuBarSensorIDs, ["sensor.removed"])
+        fake.testResult = .failure(HAError.httpStatus(401))
+        do {
+            try await store.testConnection(store.config.connection!)
+            XCTFail("Injected connection failure should be surfaced")
+        } catch {
+            XCTAssertEqual(error as? HAError, .httpStatus(401))
+        }
+        store.toggleFavorite("light.removed")
+        store.removeMenuBarSensor("sensor.removed")
+        XCTAssertTrue(store.missingFavoriteIDs.isEmpty)
+        XCTAssertTrue(store.missingMenuBarSensorIDs.isEmpty)
+    }
+
     func testRefreshKeepsSocketAndIgnoresCallbacksFromReplacedConnection() async throws {
         let config = TestSupport.makeConfig()
         try config.saveConnection(url: "http://old.local", token: "OLD")

@@ -31,7 +31,7 @@ struct SettingsView: View {
                 .tabItem { Label("Menu Bar", systemImage: "menubar.rectangle") }
                 .tag(SettingsTab.menuBar)
         }
-        .frame(minWidth: 600, minHeight: 460)
+        .frame(minWidth: 680, minHeight: 480)
     }
 }
 
@@ -184,7 +184,7 @@ struct ConnectionSettingsView: View {
         let requestID = testID
         testTask = Task {
             do {
-                try await HomeAssistantClient(connection: connection).testConnection()
+                try await store.testConnection(connection)
                 guard !Task.isCancelled, requestID == testID else { return }
                 status = .success
             } catch {
