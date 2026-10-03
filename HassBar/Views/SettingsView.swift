@@ -37,18 +37,18 @@ struct SettingsView: View {
 
 // MARK: - Connection
 
-private struct ConnectionSettingsView: View {
+struct ConnectionSettingsView: View {
     let store: HomeAssistantStore
 
-    @State private var url: String = ""
-    @State private var token: String = ""
-    @State private var showToken: Bool = false
-    @State private var status: TestStatus = .idle
+    @State private var url = ""
+    @State private var token = ""
+    @State private var showToken = false
+    @State private var status = TestStatus.idle
+    @State private var testTask: Task<Void, Never>?
+    @State private var testID = UUID()
 
     enum TestStatus: Equatable {
-        case idle
-        case testing
-        case success
+        case idle, testing, success, saved
         case failure(String)
     }
 
@@ -60,137 +60,148 @@ private struct ConnectionSettingsView: View {
                     .autocorrectionDisabled()
                     .onSubmit { save() }
 
-                LabeledContent("Access Token") {
-                    tokenField
-                }
+                LabeledContent("Access Token") { tokenField }
             } header: {
                 Text("Home Assistant")
             } footer: {
-                Text("Enter the URL of your Home Assistant server and a long-lived access token.")
+                Text("Use an HTTP or HTTPS server URL and a long-lived access token. The token is stored in Keychain when you save.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
 
             Section {
                 HStack(spacing: 12) {
-                    statusView
+                    Button("Test Connection") { beginTest() }
+                        .disabled(status == .testing || draftConnection == nil)
+                    Button("Save") { save() }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(draftConnection == nil || !hasChanges)
+                        .keyboardShortcut("s", modifiers: .command)
                     Spacer()
-                    Button("Test Connection") {
-                        Task { await testConnection() }
-                    }
-                    .disabled(status == .testing || url.isEmpty || token.isEmpty)
                 }
+                statusView
             }
         }
-        .formStyle(.columns)
+        .formStyle(.grouped)
         .controlSize(.regular)
-        .padding()
         .onAppear { load() }
-        .onDisappear { save() }
+        .onChange(of: url) { invalidateTest() }
+        .onChange(of: token) { invalidateTest() }
+        .onDisappear {
+            invalidateTest()
+            showToken = false
+        }
     }
 
-    // MARK: - Token field
+    private var draftConnection: HAConnection? {
+        guard let baseURL = try? HABaseURL.parse(url) else { return nil }
+        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedToken.isEmpty else { return nil }
+        return HAConnection(baseURL: baseURL, token: trimmedToken)
+    }
+
+    private var hasChanges: Bool {
+        draftConnection != store.config.connection
+    }
 
     private var tokenField: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 8) {
             Group {
-                if showToken {
-                    TextField("", text: $token)
-                } else {
-                    SecureField("", text: $token)
-                }
+                if showToken { TextField("Access Token", text: $token) }
+                else { SecureField("Access Token", text: $token) }
             }
+            .labelsHidden()
             .textContentType(.password)
             .autocorrectionDisabled()
             .onSubmit { save() }
 
-            Button {
-                showToken.toggle()
-            } label: {
+            Button { showToken.toggle() } label: {
                 Image(systemName: showToken ? "eye.slash" : "eye")
-                    .foregroundStyle(.secondary)
             }
             .buttonStyle(.borderless)
+            .accessibilityLabel(showToken ? "Hide token" : "Show token")
             .help(showToken ? "Hide token" : "Show token")
         }
     }
-
-    // MARK: - Status
 
     @ViewBuilder
     private var statusView: some View {
         switch status {
         case .idle:
-            EmptyView()
+            if !url.isEmpty, (try? HABaseURL.parse(url)) == nil {
+                Label("Enter an HTTP or HTTPS URL without a query, fragment, or embedded credentials.", systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.secondary)
+            } else if hasChanges {
+                Text("Unsaved changes").foregroundStyle(.secondary)
+            }
         case .testing:
             HStack(spacing: 6) {
-                ProgressView()
-                    .controlSize(.small)
-                Text("Testing connection…")
-                    .foregroundStyle(.secondary)
+                ProgressView().controlSize(.small)
+                Text("Testing connection…").foregroundStyle(.secondary)
             }
         case .success:
-            Label("Connection successful", systemImage: "checkmark.circle.fill")
-                .foregroundStyle(.green)
+            Label("Connection successful", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+        case .saved:
+            Label("Connection saved", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
         case .failure(let message):
             Label(message, systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(.red)
-                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
-
-    // MARK: - Actions
 
     private func load() {
         url = store.config.haURL
         token = store.config.token ?? ""
     }
 
-    private func save() {
-        let trimmedURL = url.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard trimmedURL != store.config.haURL || trimmedToken != (store.config.token ?? "") else {
-            return
-        }
-
-        store.config.haURL = trimmedURL
-        do {
-            try store.config.saveToken(trimmedToken)
-        } catch {
-            status = .failure("Could not save token to Keychain.")
-            return
-        }
-        store.reloadConfiguration()
+    private func invalidateTest() {
+        testID = UUID()
+        testTask?.cancel()
+        testTask = nil
         status = .idle
     }
 
-    private func testConnection() async {
-        save()
-
-        guard let urlValue = URL(string: url.trimmingCharacters(in: .whitespacesAndNewlines)) else {
-            status = .failure("Invalid URL.")
-            return
-        }
-        status = .testing
-        let client = HomeAssistantClient(connection: HAConnection(baseURL: urlValue, token: token))
+    private func save() {
+        guard hasChanges else { return }
+        invalidateTest()
         do {
-            try await client.testConnection()
-            status = .success
+            try store.config.saveConnection(url: url, token: token)
+            store.reloadConfiguration()
+            status = .saved
+            Task { await store.refresh() }
         } catch let error as HAError {
             status = .failure(errorMessage(error))
         } catch {
-            status = .failure(error.localizedDescription)
+            status = .failure("Could not save token to Keychain. Your saved connection was kept.")
+        }
+    }
+
+    private func beginTest() {
+        guard let connection = draftConnection else { return }
+        invalidateTest()
+        status = .testing
+        let requestID = testID
+        testTask = Task {
+            do {
+                try await HomeAssistantClient(connection: connection).testConnection()
+                guard !Task.isCancelled, requestID == testID else { return }
+                status = .success
+            } catch {
+                guard !Task.isCancelled, requestID == testID else { return }
+                status = .failure((error as? HAError).map(errorMessage) ?? error.localizedDescription)
+            }
         }
     }
 
     private func errorMessage(_ error: HAError) -> String {
         switch error {
+        case .invalidURL: return "Invalid server URL."
         case .missingToken: return "Missing token."
         case .invalidResponse: return "Invalid response from server."
         case .httpStatus(let code):
             switch code {
-            case 401: return "Authentication failed (401). Check the token."
+            case 401, 403: return "Authentication failed (\(code)). Check the token."
             case 404: return "Endpoint not found (404). Check the URL."
             default: return "HTTP \(code)."
             }

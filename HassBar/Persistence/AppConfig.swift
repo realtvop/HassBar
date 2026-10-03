@@ -97,21 +97,31 @@ nonisolated final class AppConfig {
     }
 
     func saveToken(_ token: String) throws {
-        try tokenStore.saveToken(token, for: Self.tokenAccount)
+        try tokenStore.saveToken(token.trimmingCharacters(in: .whitespacesAndNewlines), for: Self.tokenAccount)
     }
 
-    func clearToken() {
-        try? tokenStore.deleteToken(for: Self.tokenAccount)
+    func clearToken() throws {
+        try tokenStore.deleteToken(for: Self.tokenAccount)
+    }
+
+    /// Persist credentials first so a Keychain failure leaves the saved connection intact.
+    func saveConnection(url: String, token: String) throws {
+        let baseURL = try HABaseURL.parse(url)
+        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedToken.isEmpty else { throw HAError.missingToken }
+        try saveToken(trimmedToken)
+        haURL = baseURL.absoluteString
+    }
+
+    var connection: HAConnection? {
+        guard let url = try? HABaseURL.parse(haURL),
+              let token, !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return HAConnection(baseURL: url, token: token.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     /// True when both a URL and a token are available, ready to talk to HA.
     var isConfigured: Bool {
-        let url = haURL
-        guard !url.isEmpty, let scheme = URL(string: url)?.scheme, let host = URL(string: url)?.host, !host.isEmpty else {
-            return false
-        }
-        _ = scheme
-        return (token ?? "").isEmpty == false
+        connection != nil
     }
 
     static let urlKey = "ha.baseURL"

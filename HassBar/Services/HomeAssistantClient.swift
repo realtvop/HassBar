@@ -7,16 +7,36 @@
 
 import Foundation
 
-enum HAError: Error, Equatable {
+nonisolated enum HAError: Error, Equatable {
     case missingToken
+    case invalidURL
     case invalidResponse
     case httpStatus(Int)
     case transport(String)
     case decoding
 }
 
+/// Accepts an HTTP(S) server root or reverse-proxy prefix, without credentials or query data.
+nonisolated enum HABaseURL {
+    static func parse(_ value: String) throws -> URL {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.contains(where: { $0.isWhitespace }),
+              var components = URLComponents(string: trimmed),
+              let scheme = components.scheme?.lowercased(), ["http", "https"].contains(scheme),
+              let host = components.host, !host.isEmpty,
+              components.user == nil, components.password == nil,
+              components.query == nil, components.fragment == nil,
+              components.port.map({ (1...65535).contains($0) }) ?? true else {
+            throw HAError.invalidURL
+        }
+        components.scheme = scheme
+        guard let url = components.url else { throw HAError.invalidURL }
+        return url
+    }
+}
+
 /// Connection coordinates required to talk to a Home Assistant instance.
-struct HAConnection: Equatable, Sendable {
+nonisolated struct HAConnection: Equatable, Sendable {
     let baseURL: URL
     let token: String
 }
@@ -34,6 +54,7 @@ enum HARequestBuilder {
         body: Data? = nil
     ) throws -> URLRequest {
         guard !token.isEmpty else { throw HAError.missingToken }
+        _ = try HABaseURL.parse(baseURL.absoluteString)
         let trimmedPath = path.hasPrefix("/") ? String(path.dropFirst()) : path
         let url = baseURL.appendingPathComponent(trimmedPath)
         var request = URLRequest(url: url)

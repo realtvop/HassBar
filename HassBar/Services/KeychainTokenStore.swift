@@ -30,16 +30,19 @@ nonisolated struct KeychainTokenStore: KeychainTokenStoring {
 
     func saveToken(_ token: String, for account: String) throws {
         let data = Data(token.utf8)
-        var query: [String: Any] = [
+        let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
-        // Replace any existing item to keep the API simple and idempotent.
-        SecItemDelete(query as CFDictionary)
-        query[kSecValueData as String] = data
-        query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-        let status = SecItemAdd(query as CFDictionary, nil)
+        let attributes: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+        ]
+        var status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if status == errSecItemNotFound {
+            status = SecItemAdd(query.merging(attributes) { _, new in new } as CFDictionary, nil)
+        }
         guard status == errSecSuccess else {
             throw KeychainError.unexpectedStatus(status)
         }

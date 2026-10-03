@@ -132,6 +132,7 @@ struct MenuBarView: View {
 
     private static func errorLabel(_ error: HAError) -> String {
         switch error {
+        case .invalidURL: return "Invalid server URL"
         case .missingToken: return "Missing token"
         case .invalidResponse: return "Invalid response"
         case .httpStatus(let code): return "HTTP \(code)"
@@ -464,6 +465,7 @@ private struct FavoriteRow: View {
 
     private static func errorLabel(_ error: HAError) -> String {
         switch error {
+        case .invalidURL: return "Invalid server URL"
         case .missingToken: return "No token"
         case .httpStatus(let code): return "Failed (\(code))"
         case .transport: return "Unreachable"

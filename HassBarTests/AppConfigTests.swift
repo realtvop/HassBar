@@ -2,6 +2,38 @@ import XCTest
 @testable import HassBar
 
 final class AppConfigTests: XCTestCase {
+    func testConnectionValidationAndNormalization() throws {
+        let config = TestSupport.makeConfig()
+        for value in ["ftp://ha.local", "file://ha.local", "http://", "https://user:password@ha.local", "https://ha.local?q=1", "https://ha.local/#fragment", "http://ha.local:0", "http://ha.local:99999", "http://ha.local/a b"] {
+            XCTAssertThrowsError(try config.saveConnection(url: value, token: "T"), value)
+            XCTAssertFalse(config.isConfigured)
+        }
+        try config.saveConnection(url: " https://ha.local/prefix/ ", token: " T\n")
+        XCTAssertEqual(config.connection?.baseURL.absoluteString, "https://ha.local/prefix/")
+        XCTAssertEqual(config.token, "T")
+    }
+
+    func testKeychainFailurePreservesSavedConnection() throws {
+        let tokenStore = FakeKeychainTokenStore()
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let config = AppConfig(defaults: defaults, tokenStore: tokenStore)
+        try config.saveConnection(url: "http://old.local", token: "OLD")
+        tokenStore.saveError = KeychainError.unexpectedStatus(-1)
+        XCTAssertThrowsError(try config.saveConnection(url: "http://new.local", token: "NEW"))
+        XCTAssertEqual(config.haURL, "http://old.local")
+        XCTAssertEqual(config.token, "OLD")
+        tokenStore.deleteError = KeychainError.unexpectedStatus(-1)
+        XCTAssertThrowsError(try config.clearToken())
+        XCTAssertEqual(config.token, "OLD")
+    }
+
+    func testBlankTokenCannotReplaceSavedConnection() throws {
+        let config = TestSupport.makeConfig()
+        try config.saveConnection(url: "http://old.local", token: "OLD")
+        XCTAssertThrowsError(try config.saveConnection(url: "http://new.local", token: " \n"))
+        XCTAssertEqual(config.haURL, "http://old.local")
+        XCTAssertEqual(config.token, "OLD")
+    }
     func testDefaultsUnconfigured() {
         let config = TestSupport.makeConfig()
         XCTAssertEqual(config.haURL, "")
@@ -43,7 +75,7 @@ final class AppConfigTests: XCTestCase {
     func testClearTokenRemovesIt() throws {
         let config = TestSupport.makeConfig()
         try config.saveToken("T")
-        config.clearToken()
+        try config.clearToken()
         XCTAssertNil(config.token)
     }
 
